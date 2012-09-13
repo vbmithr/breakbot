@@ -31,6 +31,16 @@ module Currency = struct
   
 end
 
+module Satoshi = struct
+  type t = int
+
+  let of_btc_float v = int_of_float (v *. 1e8)
+  let to_btc_float v = float_of_int v /. 1e8
+
+  let of_string = int_of_string
+  let of_btc_string v = int_of_float (float_of_string v *. 1e8)
+end
+
 module Order = struct
   type kind = Bid | Ask
   type strategy = 
@@ -38,13 +48,13 @@ module Order = struct
   | Good_till_cancelled 
   | Immediate_or_cancel
   | Fill_or_kill
-
+      
   type t = 
     {
       direction : kind;
       stategy   : strategy option;
       currency  : Currency.t;
-      price     : float;
-      amount    : float
+      price     : int; (* price in satoshis *)
+      amount    : int (* amount of BTC in satoshis *)
     }
 end

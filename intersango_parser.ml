@@ -3,8 +3,8 @@ open Yojson.Safe
 open Intersango_common
 
 module type BOOK = sig
-  val add_to_bid_books : Currency.t -> float -> float -> unit
-  val add_to_ask_books : Currency.t -> float -> float -> unit
+  val add_to_bid_books : Currency.t -> int -> int -> unit
+  val add_to_ask_books : Currency.t -> int -> int -> unit
   val print_bid_books : unit -> unit
   val print_ask_books : unit -> unit
 end
@@ -14,8 +14,8 @@ module Parser = functor (B : BOOK) -> struct
     | `Assoc l -> 
       List.iter (fun (rate, amount) ->
         match amount with `String amount ->
-          (let rate = float_of_string rate in
-           let amount = float_of_string amount in
+          (let rate = Satoshi.of_btc_string rate in
+           let amount = Satoshi.of_btc_string amount in
            match kind with
              | Order.Bid -> B.add_to_bid_books curr rate amount
              | Order.Ask -> B.add_to_ask_books curr rate amount)
@@ -51,8 +51,8 @@ module Parser = functor (B : BOOK) -> struct
          "amount", `String amount
        ]]    -> 
       let curr = Currency.of_int (int_of_string curr) in
-      let rate = float_of_string rate in
-      let amount = float_of_string amount in
+      let rate = Satoshi.of_btc_string rate in
+      let amount = Satoshi.of_btc_string amount in
       (match kind with
         | "bids" -> B.add_to_bid_books curr rate amount
         | "asks" -> B.add_to_ask_books curr rate amount

@@ -5,17 +5,17 @@ open Lwt_unix
 open Intersango_common
     
 module Book = struct
-  module FloatMap = Map.Make(
+  module IntMap = Map.Make(
     struct 
-      type t = float
+      type t = int
       let compare = Pervasives.compare 
     end)
     
   (** A book represent the depth for one currency, and one order
       kind *)
-  type t = float FloatMap.t
+  type t = int IntMap.t
     
-  let (empty:t) = FloatMap.empty
+  let (empty:t) = IntMap.empty
     
   let make_books_fun () =
     let books = Hashtbl.create 10 in
@@ -24,14 +24,16 @@ module Book = struct
         try Hashtbl.find books curr 
         with Not_found -> empty in
       let new_book =
-        if FloatMap.mem price book then 
-          let old_amount = FloatMap.find price book in
-          FloatMap.add price (old_amount +. amount) book
-        else FloatMap.add price amount book
+        if IntMap.mem price book then 
+          let old_amount = IntMap.find price book in
+          IntMap.add price (old_amount + amount) book
+        else IntMap.add price amount book
       in Hashtbl.replace books curr new_book in
     let print () =
-      let print_one book = FloatMap.iter 
-        (fun rate amount -> Printf.printf "(%f,%f) " rate amount) book in
+      let print_one book = IntMap.iter 
+        (fun rate amount -> Printf.printf "(%f,%f) " 
+          (Satoshi.to_btc_float rate)
+          (Satoshi.to_btc_float amount)) book in
       Hashtbl.iter (fun curr book -> 
         Printf.printf "Currency: %s\n" (Currency.to_string curr);
         print_one book; print_endline "";
