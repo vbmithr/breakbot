@@ -1,5 +1,6 @@
 open Yojson.Safe
 
+open Common
 open Intersango_common
 
 module type BOOK = sig
