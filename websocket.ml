@@ -1,6 +1,6 @@
 open Utils
 open Common
-open Cohttp_lwt_unix
+open Mycohttp
 
 module CK = Cryptokit
 
@@ -27,23 +27,33 @@ module Opcode = struct
     | Frame_oth_ctrl
     | Frame_oth_nonctrl
 
-  let of_char i = function
-    | '\000' -> Frame_continuation
-    | '\001' -> Frame_text
-    | '\002' -> Frame_binary
-    | '\008' -> Frame_close
-    | '\009' -> Frame_ping
-    | '\010' -> Frame_pong
-    | i when Char.code i > 2 && Char.code i < 8 -> Frame_oth_nonctrl
+  let to_string = function
+    | Frame_continuation -> "continuation frame"
+    | Frame_text         -> "text frame"
+    | Frame_binary       -> "binary frame"
+    | Frame_close        -> "close frame"
+    | Frame_ping         -> "ping frame"
+    | Frame_pong         -> "pong frame"
+    | Frame_oth_ctrl     -> "other control frame"
+    | Frame_oth_nonctrl  -> "other non-control frame"
+
+  let of_int i = match i land 0xf with
+    | 0 -> Frame_continuation
+    | 1 -> Frame_text
+    | 2 -> Frame_binary
+    | 8 -> Frame_close
+    | 9 -> Frame_ping
+    | 10 -> Frame_pong
+    | i when i > 2 && i < 8 -> Frame_oth_nonctrl
     | _ -> Frame_oth_ctrl
 
-  let to_char = function
-    | Frame_continuation -> '\000'
-    | Frame_text         -> '\001'
-    | Frame_binary       -> '\002'
-    | Frame_close        -> '\008'
-    | Frame_ping         -> '\009'
-    | Frame_pong         -> '\010'
+  let to_int op = function
+    | Frame_continuation -> 0
+    | Frame_text         -> 1
+    | Frame_binary       -> 2
+    | Frame_close        -> 8
+    | Frame_ping         -> 9
+    | Frame_pong         -> 10
     | _ -> failwith "Opcode.to_char: Invalid frame type"
 end
 
@@ -62,8 +72,7 @@ let check_response_is_conform resp nonce64 =
     | str         -> raise (Response_failure (Bad_upgrade_hdr str)))
    with Not_found -> raise (Response_failure (Bad_upgrade_hdr "")));
 
-  (try (match List.assoc "connection" hdrs with
-    | "Upgrade" | "upgrade" -> ()
+  (try (match List.assoc "connection" hdrs with    | "Upgrade" | "upgrade" -> ()
     | str       -> raise (Response_failure (Bad_connection_hdr str)))
    with Not_found -> raise (Response_failure (Bad_connection_hdr "")));
 
@@ -80,8 +89,8 @@ let check_response_is_conform resp nonce64 =
 let with_websocket uri f =
   lwt myhostname = Lwt_unix.gethostname () in
   let uri = Uri.of_string uri in
-  let host = Opt.unopt (Uri.host uri) in
-  let port = string_of_int (Opt.unopt ~default:80 (Uri.port uri)) in
+  (* let host = Opt.unopt (Uri.host uri) in *)
+  (* let port = string_of_int (Opt.unopt ~default:80 (Uri.port uri)) in *)
   let random_bits = Random.bits () in
   let nonce = String.create 2 in
   let _ =
@@ -95,42 +104,48 @@ let with_websocket uri f =
        "Connection"            , "Upgrade";
        "Sec-WebSocket-Key"     , nonce64;
        "Sec-WebSocket-Version" , "13"] in
-  lwt ic, oc = open_connection host port in
-  lwt res = Client.get ~headers uri in
+  lwt ic, oc = Net.connect_uri uri in
+  let req = Request.make ~headers uri in
+  lwt () = Client.write_request req oc in
+  lwt res = Client.read_response ic oc in
   let response, _ =
     try Opt.unopt res
     with Opt.Unopt_none -> raise (Response_failure Response_empty) in
   let () =
     check_response_is_conform response nonce64 in
 
-  (* Assuming that max_message_size = 65536 *)
-  let fun_ic, my_oc = Lwt_io.pipe ~buffer_size:65536 ()
-  and my_ic, fun_oc = Lwt_io.pipe ~buffer_size:65536 () in
+  let fun_ic, my_oc = Lwt_io.pipe ()
+  and my_ic, fun_oc = Lwt_io.pipe () in
 
-  let buf_frame = String.make 65536 '\000' in (* buffer to store the frame *)
-  let rec read_one_frame () =
-    lwt hdr = Lwt_io.read ~count:4 ic in
-    let final = hdr.[0] > '\007' in
-    let opcode = Opcode.of_char hdr.[1] in
-    let masked = hdr.[2] > '\127' in
-    lwt payload_len = match (Char.code hdr.[2]) land 127 with
+  (* buffer to store the frame *)
+  let buf_frame = String.make (Lwt_io.default_buffer_size ()) '\000' in
+
+  let rec read_frames () =
+    lwt hdr = Lwt_io.read ~count:2 ic in
+    let final = hdr.[0] > '\127' in
+    let () = Printf.printf "This is a final frame: %b.\n%!" final in
+    let opcode = Opcode.of_int (Char.code hdr.[0]) in
+    let () = Printf.printf "This frame is a %s.\n%!" (Opcode.to_string opcode) in
+    let masked = hdr.[1] > '\127' in
+    lwt payload_len = match (Char.code hdr.[1]) land 127 with
       | i when i < 126 -> Lwt.return i
       | 126 -> Lwt_io.BE.read_int16 ic
       | 127 -> (Lwt_io.BE.read_int64 ic) >>= fun i -> Lwt.return (Int64.to_int i)
       | _ -> failwith "Can never happen." in
+    let () = Printf.printf "Masked: %b. Payload len: %d\n%!" masked payload_len in
     lwt mask_key = if masked then Lwt_io.read ~count:4 ic else Lwt.return "" in
     let rec read_payload = function
       | 0 -> Lwt.return ()
-      | n -> (lwt bytes_read = Lwt_io.read_into ic buf_frame 0 (max n 65536) in
+      | n -> (lwt bytes_read = Lwt_io.read_into ic buf_frame 0
+                (min n (Lwt_io.default_buffer_size ())) in
               lwt () = Lwt_io.write_from_exactly my_oc buf_frame 0 bytes_read in
               read_payload (n - bytes_read)) in
     lwt () = read_payload payload_len in
-    if not final then read_one_frame () else Lwt.return ()
+    lwt () = Lwt_io.write_char my_oc '\n' in
+    read_frames ()
+
   in
-  while_lwt true do
-    lwt () = read_one_frame () in
-    f (fun_ic, fun_oc)
-  done
+  Lwt.join [read_frames (); f (fun_ic, fun_oc)]
 
 let () =
   let () = Random.self_init () in

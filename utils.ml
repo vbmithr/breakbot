@@ -33,9 +33,7 @@ let open_connection node service =
 
 let print_to_stdout (ic, oc) : unit Lwt.t =
   let rec print_to_stdout () =
-    Lwt.return ic
-    >>= fun c -> Lwt_io.read_line c
-    >>= fun str ->
-    Lwt_io.printf "%s\n" str
-    >>= fun () -> print_to_stdout ()
+    lwt line = Lwt_io.read_line ic in
+    lwt () = Lwt_io.printf "%s\n" line in
+    print_to_stdout ()
   in print_to_stdout ()

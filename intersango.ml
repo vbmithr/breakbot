@@ -53,12 +53,10 @@ module Parser = Parser(Book)
 let print_to_stdout (ic, oc) : unit Lwt.t =
   let buf = Bi_outbuf.create 100 in
   let rec print_to_stdout () =
-    Lwt.return ic
-    >>= fun c -> Lwt_io.read_line c
-    >>= fun str ->
-    Parser.update_books (Yojson.Safe.from_string ~buf str);
-    Lwt_io.printf "%s\n" str
-    >>= fun () -> print_to_stdout ()
+    lwt line = Lwt_io.read_line ic in
+    let () = Parser.update_books (Yojson.Safe.from_string ~buf line) in
+    lwt () = Lwt_io.printf "%s\n" line in
+    print_to_stdout ()
   in print_to_stdout ()
 
 let () =
