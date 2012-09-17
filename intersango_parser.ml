@@ -6,13 +6,11 @@ open Intersango_common
 module type BOOK = sig
   val add_to_bid_books : Currency.t -> int -> int -> unit
   val add_to_ask_books : Currency.t -> int -> int -> unit
-  val print_bid_books : unit -> unit
-  val print_ask_books : unit -> unit
 end
 
 module Parser = functor (B : BOOK) -> struct
   let parse_orderbook3 curr kind = function
-    | `Assoc l -> 
+    | `Assoc l ->
       List.iter (fun (rate, amount) ->
         match amount with `String amount ->
           (let rate = Satoshi.of_btc_string rate in
@@ -39,18 +37,18 @@ module Parser = functor (B : BOOK) -> struct
         let curr = Currency.of_int (int_of_string curr) in
         parse_orderbook2 curr obj) l
     | _        -> failwith "Parser.parse_orderbook1"
-        
+
   let update_books = function
     | `List [`String "orderbook"; obj] ->
       parse_orderbook1 obj
 
-    | `List [`String "depth"; 
+    | `List [`String "depth";
        `Assoc [
          "currency_pair_id", `String curr;
          "rate", `String rate;
          "type", `String kind;
          "amount", `String amount
-       ]]    -> 
+       ]]    ->
       let curr = Currency.of_int (int_of_string curr) in
       let rate = Satoshi.of_btc_string rate in
       let amount = Satoshi.of_btc_string amount in
@@ -60,8 +58,4 @@ module Parser = functor (B : BOOK) -> struct
         | _      -> failwith "Parser.update_books")
     | `List [`String "ping"; obj] -> assert (obj = `Assoc [])
     | _ -> () (* Do nothing on other messages *)
-
-  let print_bid_books = B.print_bid_books
-  let print_ask_books = B.print_ask_books 
 end
-  

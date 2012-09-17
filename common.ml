@@ -45,37 +45,49 @@ module Order = struct
       }
 end
 
+(** A book represent the depth for one currency, and one order kind *)
 module Book = struct
-  (** A book represent the depth for one currency, and one order
-      kind *)
   type t = int IntMap.t
 
   let (empty:t) = IntMap.empty
 
-  let make_books_fun () =
-    let books = Hashtbl.create 10 in
-    let add (curr:Currency.t) price amount =
-      let book =
-        try Hashtbl.find books curr
-        with Not_found -> empty in
-      let new_book =
-        if IntMap.mem price book then
-          let old_amount = IntMap.find price book in
-          IntMap.add price (old_amount + amount) book
-        else IntMap.add price amount book
-      in Hashtbl.replace books curr new_book in
-    let print () =
-      let print_one book = IntMap.iter
-        (fun rate amount -> Printf.printf "(%f,%f) "
-          (Satoshi.to_btc_float rate)
-          (Satoshi.to_btc_float amount)) book in
-      Hashtbl.iter (fun curr book ->
-        Printf.printf "Currency: %s\n" (Currency.to_string curr);
-        print_one book; print_endline "";
+  let update book price amount =
+    try
+      let old_amount = IntMap.find price book in
+      IntMap.add price (old_amount + amount) book
+    with Not_found -> IntMap.add price amount book
 
-      ) books
-    in (add, print)
+  let amount_below_or_eq book price =
+    let l, data, r = IntMap.split price book in
+    IntMap.fold (fun pr am acc -> acc + am)
+      l (Opt.unopt ~default:0 data)
 
-  let add_to_bid_books, print_bid_books = make_books_fun ()
-  let add_to_ask_books, print_ask_books = make_books_fun ()
+  let amount_above_or_eq book price =
+    let l, data, r = IntMap.split price book in
+    IntMap.fold (fun pr am acc -> acc + am)
+      r (Opt.unopt ~default:0 data)
+end
+
+(** Books are a set of books, one for each currency *)
+module Books = struct
+  type t = (Currency.t, int IntMap.t) Hashtbl.t
+
+  let (empty:t) = Hashtbl.create 10
+
+  let update books (curr:Currency.t) price amount =
+    let book =
+      try Hashtbl.find books curr
+      with Not_found -> Book.empty in
+    let new_book = Book.update book price amount in
+    Hashtbl.replace books curr new_book
+
+  let print books =
+    let print_one book = IntMap.iter
+      (fun rate amount -> Printf.printf "(%f,%f) "
+        (Satoshi.to_btc_float rate)
+        (Satoshi.to_btc_float amount)) book in
+    Hashtbl.iter (fun curr book ->
+      Printf.printf "Currency: %s\n" (Currency.to_string curr);
+      print_one book; print_endline "";
+    ) books
 end

@@ -2,7 +2,15 @@ open Utils
 open Common
 open Intersango_parser
 
-module Parser = Parser(Book)
+module MyBooks = struct
+  let bid_books = Books.empty
+  let ask_books = Books.empty
+
+  let add_to_bid_books = Books.update bid_books
+  let add_to_ask_books = Books.update ask_books
+end
+
+module Parser = Parser(MyBooks)
 
 let print_to_stdout (ic, oc) : unit Lwt.t =
   let buf = Bi_outbuf.create 100 in
@@ -20,5 +28,5 @@ let () =
       [(with_connection "db.intersango.com" "1337" print_to_stdout)] in
     Lwt.join threads_to_run |> Lwt_main.run
   with Sys.Break ->
-    print_endline "Bids"; Parser.print_bid_books ();
-    print_endline "Asks"; Parser.print_ask_books ()
+    print_endline "Bids"; Books.print MyBooks.bid_books;
+    print_endline "Asks"; Books.print MyBooks.ask_books
