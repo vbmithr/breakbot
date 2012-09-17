@@ -1,6 +1,12 @@
 let (|>) f g = g f
 let (>>=) = Lwt.bind
 
+module IntMap = Map.Make(
+  struct
+    type t = int
+    let compare = Pervasives.compare
+  end)
+
 module Opt = struct
   exception Unopt_none
 

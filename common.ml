@@ -1,3 +1,5 @@
+open Utils
+
 module Currency = struct
   type t   = GBP | EUR | USD | PLN
 
@@ -36,9 +38,44 @@ module Order = struct
   type t =
       {
         direction : kind;
-        stategy   : strategy option;
+        stategy   : strategy;
         currency  : Currency.t;
         price     : int; (* price in satoshis *)
         amount    : int (* amount of BTC in satoshis *)
       }
+end
+
+module Book = struct
+  (** A book represent the depth for one currency, and one order
+      kind *)
+  type t = int IntMap.t
+
+  let (empty:t) = IntMap.empty
+
+  let make_books_fun () =
+    let books = Hashtbl.create 10 in
+    let add (curr:Currency.t) price amount =
+      let book =
+        try Hashtbl.find books curr
+        with Not_found -> empty in
+      let new_book =
+        if IntMap.mem price book then
+          let old_amount = IntMap.find price book in
+          IntMap.add price (old_amount + amount) book
+        else IntMap.add price amount book
+      in Hashtbl.replace books curr new_book in
+    let print () =
+      let print_one book = IntMap.iter
+        (fun rate amount -> Printf.printf "(%f,%f) "
+          (Satoshi.to_btc_float rate)
+          (Satoshi.to_btc_float amount)) book in
+      Hashtbl.iter (fun curr book ->
+        Printf.printf "Currency: %s\n" (Currency.to_string curr);
+        print_one book; print_endline "";
+
+      ) books
+    in (add, print)
+
+  let add_to_bid_books, print_bid_books = make_books_fun ()
+  let add_to_ask_books, print_ask_books = make_books_fun ()
 end
