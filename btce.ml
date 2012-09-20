@@ -5,7 +5,8 @@ open Utils
 open Common
 
 let period = 2.0
-let url_string = "https://btc-e.com/api/2/btc_usd/depth"
+let exchanges = ["btce", "https://btc-e.com/api/2/btc_usd/depth";
+                 "campbx", "http://campbx.com/api/xdepth.php"]
 (* let uri = Uri.of_string "https://btc-e.com/api/2/btc_usd/depth" *)
 (* let uri = Uri.make ~scheme:"https" *)
 (*   ~host:"btc-e.com" ~port:443 ~path:"/api/2/btc_usd/depth" () *)
@@ -41,6 +42,10 @@ module Make = functor (B : BOOK) -> struct
         parse_btce_array Order.Ask asks;
         parse_btce_array Order.Bid bids
 
+      | `Assoc [("Asks", asks); ("Bids", bids)] ->
+        parse_btce_array Order.Ask asks;
+        parse_btce_array Order.Bid bids
+
       | _ -> failwith "Parser.parse"
 end
 
@@ -52,7 +57,7 @@ let rec update_depth () =
   (*   | None -> let () = Printf.printf "No response!\n%!" in update_depth () *)
   (*   | Some (response, body) -> *)
   (*     lwt body_str = Body.string_of_body body in *)
-  let body_str = Http_client.Convenience.http_get url_string in
+  let body_str = Http_client.Convenience.http_get (List.assoc Sys.argv.(1) exchanges) in
   let () = Parser.parse ~buf body_str in
   lwt () = Lwt_unix.sleep period in update_depth ()
 
