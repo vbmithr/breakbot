@@ -1,3 +1,4 @@
 <*.ml>: package(lwt.syntax), syntax(camlp4o), package(lwt), package(lwt.extra), package(lwt.unix), package(yojson), package(cohttp), package(cohttp.lwt), package(cryptokit), thread, annot
 <*.native>: package(lwt.syntax), syntax(camlp4o), package(lwt), package(lwt.extra), package(lwt.unix), package(yojson), package(cohttp), package(cohttp.lwt), package(cryptokit), thread, annot
 <*.byte>: package(lwt.syntax), syntax(camlp4o), package(lwt), package(lwt.extra), package(lwt.unix), package(yojson), package(cohttp), package(cohttp.lwt), package(cryptokit), thread, annot
+<btce.*>: package(netclient), package(equeue-ssl), package(lwt.syntax), syntax(camlp4o), package(lwt), package(lwt.extra), package(lwt.unix), package(yojson), package(cryptokit), thread, annot

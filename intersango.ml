@@ -2,18 +2,10 @@ open Utils
 open Common
 open Intersango_parser
 
-module MyBooks = struct
-  let bid_books = Books.empty
-  let ask_books = Books.empty
-
-  let add_to_bid_books = Books.update bid_books
-  let add_to_ask_books = Books.update ask_books
-end
-
 module Parser = Parser(MyBooks)
 
 let print_to_stdout (ic, oc) : unit Lwt.t =
-  let buf = Bi_outbuf.create 100 in
+  let buf = Bi_outbuf.create 4096 in
   let rec print_to_stdout () =
     lwt line = Lwt_io.read_line ic in
     let () = Parser.update_books (Yojson.Safe.from_string ~buf line) in
