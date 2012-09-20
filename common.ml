@@ -57,7 +57,7 @@ end
 module Book = struct
   type t = int IntMap.t
 
-  let (empty:t) = IntMap.empty
+  let empty = IntMap.empty
 
   let add book price amount =
     IntMap.add price amount book
@@ -108,6 +108,8 @@ module Books = struct
     let new_book = Book.add book price amount in
     Hashtbl.replace books curr new_book
 
+  let remove books curr = Hashtbl.remove books curr
+
   let update books (curr:Currency.t) price amount =
     let book =
       try Hashtbl.find books curr
@@ -129,6 +131,7 @@ end
 module type BOOK = sig
   val update_books : Order.kind -> Currency.t -> int -> int -> unit
   val add_books : Order.kind -> Currency.t -> int -> int -> unit
+  val clear_books: unit -> unit
 end
 
 module MyBooks = struct
@@ -142,5 +145,9 @@ module MyBooks = struct
   let add_books = function
     | Order.Bid -> Books.add bid_books
     | Order.Ask -> Books.add ask_books
+
+  let clear_books () =
+    Hashtbl.clear bid_books;
+    Hashtbl.clear ask_books
 
 end

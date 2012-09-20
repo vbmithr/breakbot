@@ -49,6 +49,7 @@ module Make = functor (B : BOOK) -> struct
             | Order.Bid, Order.Ask -> value2, value1
             | _                    -> failwith "Parsing: Import format error"
         in
+        B.clear_books ();
         parse_btce_array Order.Ask asks;
         parse_btce_array Order.Bid bids
 
