@@ -99,7 +99,7 @@ end
 module Books = struct
   type t = (Currency.t, int IntMap.t) Hashtbl.t
 
-  let (empty:t) = Hashtbl.create 10
+  let empty () = Hashtbl.create 10
 
   let add books (curr:Currency.t) price amount =
     let book =
@@ -132,8 +132,8 @@ module type BOOK = sig
 end
 
 module MyBooks = struct
-  let bid_books = Books.empty
-  let ask_books = Books.empty
+  let bid_books = Books.empty ()
+  let ask_books = Books.empty ()
 
   let update_books = function
     | Order.Bid -> Books.update bid_books
