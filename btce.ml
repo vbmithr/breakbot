@@ -6,7 +6,9 @@ open Common
 
 let period = 2.0
 let exchanges = ["btce", "https://btc-e.com/api/2/btc_usd/depth";
-                 "campbx", "http://campbx.com/api/xdepth.php"]
+                 "campbx", "http://campbx.com/api/xdepth.php";
+                 "bitstamp", "https://www.bitstamp.net/api/order_book/"
+                ]
 (* let uri = Uri.of_string "https://btc-e.com/api/2/btc_usd/depth" *)
 (* let uri = Uri.make ~scheme:"https" *)
 (*   ~host:"btc-e.com" ~port:443 ~path:"/api/2/btc_usd/depth" () *)
@@ -25,6 +27,8 @@ module Make = functor (B : BOOK) -> struct
               | `Int price, `Float amount   -> float_of_int price, amount
               | `Float price, `Int amount   -> price, float_of_int amount
               | `Float price, `Float amount -> price, amount
+              | `String price, `String amount ->
+                float_of_string price, float_of_string amount
               | _ -> failwith "parse_btce_array: Invalid input 2" in
           B.add_books kind Currency.USD
             (Satoshi.of_btc_float price) (Satoshi.of_btc_float amount)
@@ -38,11 +42,13 @@ module Make = functor (B : BOOK) -> struct
         | Some buf -> YS.from_string ~buf body_str in
 
     match body_json with
-      | `Assoc [("asks", asks); ("bids", bids)] ->
-        parse_btce_array Order.Ask asks;
-        parse_btce_array Order.Bid bids
-
-      | `Assoc [("Asks", asks); ("Bids", bids)] ->
+      | `Assoc [(kind1, value1); (kind2, value2)] ->
+        let asks, bids =
+          match (Order.kind_of_string kind1), (Order.kind_of_string kind2) with
+            | Order.Ask, Order.Bid -> value1, value2
+            | Order.Bid, Order.Ask -> value2, value1
+            | _                    -> failwith "Parsing: Import format error"
+        in
         parse_btce_array Order.Ask asks;
         parse_btce_array Order.Bid bids
 
