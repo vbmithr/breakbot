@@ -15,8 +15,10 @@ let exchanges = ["btce", "https://btc-e.com/api/2/btc_usd/depth";
 let exchanges = List.map (fun (a,b) -> a, Uri.of_string b) exchanges
 let buf = Bi_outbuf.create 4096
 
-module Make = functor (B : BOOK) -> struct
-  let parse ?buf body_str =
+let books = Books.empty ()
+
+module Parser = struct
+  let parse ?buf books body_str =
     let parse_btce_array kind = function
       | `List json_list ->
         List.iter (function
@@ -31,7 +33,7 @@ module Make = functor (B : BOOK) -> struct
               | `String price, `String amount ->
                 float_of_string price, float_of_string amount
               | _ -> failwith "parse_btce_array: Invalid input 2" in
-          B.add_books kind Currency.USD
+          Books.add books Currency.USD kind
             (Satoshi.of_btc_float price) (Satoshi.of_btc_float amount)
         | _ -> failwith "parse_btce_array: Invalid input 1"
         ) json_list
@@ -50,14 +52,12 @@ module Make = functor (B : BOOK) -> struct
             | Order.Bid, Order.Ask -> value2, value1
             | _                    -> failwith "Parsing: Import format error"
         in
-        B.clear_books ();
+        Books.clear books;
         parse_btce_array Order.Ask asks;
         parse_btce_array Order.Bid bids
 
       | _ -> failwith "Parser.parse"
 end
-
-module Parser = Make(MyBooks)
 
 let rec update_depth () =
   lwt res = Client.get (List.assoc Sys.argv.(1) exchanges) in
@@ -65,7 +65,7 @@ let rec update_depth () =
     | None -> let () = Printf.printf "No response!\n%!" in update_depth ()
     | Some (response, body) ->
       lwt body_str = Body.string_of_body body in
-      let () = Parser.parse ~buf body_str in
+      let () = Parser.parse ~buf books body_str in
       lwt () = Lwt_unix.sleep period in update_depth ()
 
 (* Entry point *)
@@ -74,5 +74,4 @@ let () =
   try
     Lwt_main.run (update_depth ())
   with Sys.Break ->
-    print_endline "Bids"; Books.print MyBooks.bid_books;
-    print_endline "Asks"; Books.print MyBooks.ask_books
+    Books.print books

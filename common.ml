@@ -97,59 +97,61 @@ module Book = struct
     IntMap.merge merge_fun book patch
 end
 
-(** Books are a set of books, one for each currency *)
-module Books = struct
-  type t = (Currency.t, int IntMap.t) Hashtbl.t
+(** Just a pair of two books, corresponding of bid/ask depth for one
+    currency *)
+module BookPair = struct
+  type t = Book.t * Book.t
+
+  let empty = Book.empty, Book.empty
+end
+
+module type BOOKS = sig
+  type t
+  val empty  : unit -> t
+
+  val add    : t -> Currency.t -> Order.kind -> int -> int -> unit
+  val update : t -> Currency.t -> Order.kind -> int -> int -> unit
+  val clear  : t -> unit
+
+  val print  : t -> unit
+end
+
+(** Books are a hashtbl of BookPairs, one for each currency *)
+module Books : BOOKS = struct
+  type t = (Currency.t, BookPair.t) Hashtbl.t
 
   let empty () = Hashtbl.create 10
 
-  let add books (curr:Currency.t) price amount =
-    let book =
+  let modify action_fun books curr kind price amount =
+    let bid, ask =
       try Hashtbl.find books curr
-      with Not_found -> Book.empty in
-    let new_book = Book.add book price amount in
-    Hashtbl.replace books curr new_book
+      with Not_found -> BookPair.empty in
+      match kind with
+        | Order.Bid ->
+          let newbook = action_fun bid price amount in
+          Hashtbl.replace books curr (newbook, ask)
+        | Order.Ask ->
+          let newbook = action_fun ask price amount in
+          Hashtbl.replace books curr (bid, newbook)
+
+  let add    = modify Book.add
+  let update = modify Book.update
 
   let remove books curr = Hashtbl.remove books curr
 
-  let update books (curr:Currency.t) price amount =
-    let book =
-      try Hashtbl.find books curr
-      with Not_found -> Book.empty in
-    let new_book = Book.update book price amount in
-    Hashtbl.replace books curr new_book
+  let clear = Hashtbl.clear
 
   let print books =
     let print_one book = IntMap.iter
       (fun rate amount -> Printf.printf "(%f,%f) "
         (Satoshi.to_btc_float rate)
         (Satoshi.to_btc_float amount)) book in
-    Hashtbl.iter (fun curr book ->
-      Printf.printf "Currency: %s\n" (Currency.to_string curr);
-      print_one book; print_endline "";
+    Hashtbl.iter (fun curr (bid,_) ->
+      Printf.printf "BID %s\n" (Currency.to_string curr);
+      print_one bid; print_endline "";
+    ) books;
+    Hashtbl.iter (fun curr (_,ask) ->
+      Printf.printf "ASK %s\n" (Currency.to_string curr);
+      print_one ask; print_endline "";
     ) books
-end
-
-module type BOOK = sig
-  val update_books : Order.kind -> Currency.t -> int -> int -> unit
-  val add_books : Order.kind -> Currency.t -> int -> int -> unit
-  val clear_books: unit -> unit
-end
-
-module MyBooks = struct
-  let bid_books = Books.empty ()
-  let ask_books = Books.empty ()
-
-  let update_books = function
-    | Order.Bid -> Books.update bid_books
-    | Order.Ask -> Books.update ask_books
-
-  let add_books = function
-    | Order.Bid -> Books.add bid_books
-    | Order.Ask -> Books.add ask_books
-
-  let clear_books () =
-    Hashtbl.clear bid_books;
-    Hashtbl.clear ask_books
-
 end

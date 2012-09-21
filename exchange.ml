@@ -1,5 +1,10 @@
-module type EXCHANGE : sig
-  type t
+open Common
 
-  val update_book : t -> Order.kind -> Currency.t -> int -> int -> t
-end
+type api_kind = Streaming_TCP | Streaming_WebSocket | REST
+
+type t =
+    {
+      name: string;
+      currencies: Currency.t list;
+      apis: api_kind list
+    }
