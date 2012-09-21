@@ -50,7 +50,7 @@ module IO = struct
        lwt buf = 
          try_lwt Lwt_io.read ~count ic
          with End_of_file -> return "" in
-       Printf.eprintf "<<< %s" buf;
+       Printf.eprintf "<<<[%d] %s" count buf;
        return buf)
 
   let read_exactly =
@@ -83,7 +83,47 @@ module Response = Cohttp.Response.Make(IO)
 module Body = Cohttp_lwt_body
 module Net = Cohttp_lwt_net
 module Client = Cohttp_lwt.Client(Request)(Response)(Net)
-module Server = Cohttp_lwt.Server(Request)(Response)(Net)
+
+module Server = struct
+  open Lwt
+  include Cohttp_lwt.Server(Request)(Response)(Net)
+
+  let blank_uri = Uri.of_string "" 
+
+  let resolve_file ~docroot ~uri =
+    (* This normalises the Uri and strips out .. characters *)
+    let frag = Uri.path (Uri.resolve "" blank_uri uri) in
+    Filename.concat docroot frag
+
+  let respond_file ?headers ~fname () =
+    try_lwt
+      lwt ic = Lwt_io.open_file ~buffer_size:16384 ~mode:Lwt_io.input fname in
+      lwt len = Lwt_io.length ic in
+      let encoding = Cohttp.Transfer.Fixed (Int64.to_int len) in
+      let count = 16384 in
+      let stream = Lwt_stream.from (fun () ->
+        try_lwt 
+          Lwt_io.read ~count ic >|=
+             function
+             |"" -> None
+             |buf -> Some buf
+        with
+         exn ->
+           prerr_endline ("exn: " ^ (Printexc.to_string exn));
+           return None
+      ) in
+      Lwt_stream.on_terminate stream (fun () -> 
+        ignore_result (Lwt_io.close ic));
+      let body = Body.body_of_stream stream in
+      let res = Response.make ~status:`OK ~encoding ?headers () in
+      return (res, body)
+    with
+     | Unix.Unix_error(Unix.ENOENT,_,_) ->
+         respond_not_found ()
+     | exn ->
+         let body = Printexc.to_string exn in
+         respond_error ~status:`Internal_server_error ~body ()
+end
 
 let server ?timeout ~address ~port spec =
   lwt sockaddr = Net.build_sockaddr address port in

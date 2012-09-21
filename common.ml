@@ -1,19 +1,21 @@
 open Utils
 
 module Currency = struct
-  type t   = GBP | EUR | USD | PLN
+  type t   = GBP | EUR | USD | PLN | SEK
 
   let to_string = function
     | GBP -> "GBP"
     | EUR -> "EUR"
     | USD -> "USD"
     | PLN -> "PLN"
+    | SEK -> "SEK"
 
   let of_string = function
     | "GBP" -> GBP
     | "EUR" -> EUR
     | "USD" -> USD
     | "PLN" -> PLN
+    | "SEK" -> SEK
     | _ -> failwith "Currency.of_string"
 end
 

@@ -6,6 +6,7 @@ module Currency = struct
     | EUR -> 2
     | USD -> 3
     | PLN -> 4
+    | _ -> failwith "Currency.to_int"
 
   let of_int = function
     | 1 -> GBP

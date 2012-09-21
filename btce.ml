@@ -7,7 +7,10 @@ open Common
 let period = 2.0
 let exchanges = ["btce", "https://btc-e.com/api/2/btc_usd/depth";
                  "campbx", "http://campbx.com/api/xdepth.php";
-                 "bitstamp", "https://www.bitstamp.net/api/order_book"
+                 "bitstamp", "https://www.bitstamp.net/api/order_book";
+                 "kapiton", "https://kapiton.se/api/0/orderbook";
+                 "bitcurex", "https://pln.bitcurex.com/data/orderbook.json";
+                 "bitme", "https://bitme.com/rest/compat/orderbook/BTCUSD"
                 ]
 let exchanges = List.map (fun (a,b) -> a, Uri.of_string b) exchanges
 let buf = Bi_outbuf.create 4096
