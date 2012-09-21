@@ -7,11 +7,9 @@ open Common
 let period = 2.0
 let exchanges = ["btce", "https://btc-e.com/api/2/btc_usd/depth";
                  "campbx", "http://campbx.com/api/xdepth.php";
-                 "bitstamp", "https://www.bitstamp.net/api/order_book/"
+                 "bitstamp", "https://www.bitstamp.net/api/order_book"
                 ]
-(* let uri = Uri.of_string "https://btc-e.com/api/2/btc_usd/depth" *)
-(* let uri = Uri.make ~scheme:"https" *)
-(*   ~host:"btc-e.com" ~port:443 ~path:"/api/2/btc_usd/depth" () *)
+let exchanges = List.map (fun (a,b) -> a, Uri.of_string b) exchanges
 let buf = Bi_outbuf.create 4096
 
 module Make = functor (B : BOOK) -> struct
@@ -59,25 +57,17 @@ end
 module Parser = Make(MyBooks)
 
 let rec update_depth () =
-  (* lwt res = Client.get uri in *)
-  (* match res with *)
-  (*   | None -> let () = Printf.printf "No response!\n%!" in update_depth () *)
-  (*   | Some (response, body) -> *)
-  (*     lwt body_str = Body.string_of_body body in *)
-  let body_str = Http_client.Convenience.http_get (List.assoc Sys.argv.(1) exchanges) in
-  let () = Parser.parse ~buf body_str in
-  lwt () = Lwt_unix.sleep period in update_depth ()
+  lwt res = Client.get (List.assoc Sys.argv.(1) exchanges) in
+  match res with
+    | None -> let () = Printf.printf "No response!\n%!" in update_depth ()
+    | Some (response, body) ->
+      lwt body_str = Body.string_of_body body in
+      let () = Parser.parse ~buf body_str in
+      lwt () = Lwt_unix.sleep period in update_depth ()
 
 (* Entry point *)
 let () =
   Sys.catch_break true;
-  Ssl.init ();
-  Http_client.Convenience.configure_pipeline
-    (fun p ->
-      let ctx = Ssl.create_context Ssl.TLSv1 Ssl.Client_context in
-      let tct = Https_client.https_transport_channel_type ctx in
-      p # configure_transport Http_client.https_cb_id tct
-    );
   try
     Lwt_main.run (update_depth ())
   with Sys.Break ->
