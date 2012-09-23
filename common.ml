@@ -52,7 +52,6 @@ module Order = struct
       | "bid" | "bids" -> Bid
       | "ask" | "asks" -> Ask
       | _ -> failwith "Order.kind_of_string"
-
 end
 
 (** A book represent the depth for one currency, and one order kind *)

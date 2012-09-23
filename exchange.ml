@@ -1,10 +1,14 @@
 open Common
 
-type api_kind = Streaming_TCP | Streaming_WebSocket | REST
+class virtual exchange (push: string -> unit) =
+object (self)
+  val books = Books.empty ()
 
-type t =
-    {
-      name: string;
-      currencies: Currency.t list;
-      apis: api_kind list
-    }
+  method print = Books.print books
+  method push () = push self#name
+
+  method virtual name   : string
+  method virtual update : unit -> unit Lwt.t
+  method virtual bid    : Currency.t -> int -> int -> unit Lwt.t
+  method virtual ask    : Currency.t -> int -> int -> unit Lwt.t
+end
