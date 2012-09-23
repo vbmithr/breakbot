@@ -1,11 +1,11 @@
 open Common
 
-class virtual exchange (push: string -> unit) =
+class virtual exchange mvar =
 object (self)
   val books = Books.empty ()
 
   method print = Books.print books
-  method push () = push self#name
+  method notify () = Lwt_mvar.put mvar true
 
   method virtual name   : string
   method virtual update : unit -> unit Lwt.t

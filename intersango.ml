@@ -65,19 +65,19 @@ module Parser = struct
       | _ -> () (* Do nothing on other messages *)
 end
 
-class intersango (push : string -> unit) =
+class intersango mvar =
   let buf = Bi_outbuf.create 4096 in
 object (self)
-  inherit Exchange.exchange push
+  inherit Exchange.exchange mvar
   method name = "intersango"
 
   method update () =
-    let update (ic, oc) =
+    let rec update (ic, oc) =
       lwt line = Lwt_io.read_line ic in
+      lwt () = Lwt_io.printf "%s\n" line in
       let () = Parser.parse books (Yojson.Safe.from_string ~buf line) in
-      let () = Printf.printf "I’m pushing the button.\n" in
-      let () = self#push () in
-      self#update ()
+      lwt () = self#notify () in
+      update (ic, oc)
     in with_connection "db.intersango.com" "1337" update
 
   method bid curr price amount = Lwt.return ()
