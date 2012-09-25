@@ -65,11 +65,10 @@ module Parser = struct
       | _ -> () (* Do nothing on other messages *)
 end
 
-class intersango mvar =
+class intersango =
   let buf = Bi_outbuf.create 4096 in
 object (self)
-  inherit Exchange.exchange mvar
-  method name = "intersango"
+  inherit Exchange.exchange "intersango"
 
   method update () =
     let rec update (ic, oc) =

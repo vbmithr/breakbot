@@ -146,9 +146,3 @@ let with_websocket uri f =
 
   in
   Lwt.join [read_frames (); f (fun_ic, fun_oc)]
-
-let () =
-  let () = Random.self_init () in
-  let threads_to_run =
-    [with_websocket "http://websocket.mtgox.com/mtgox" Utils.print_to_stdout] in
-  Lwt.join threads_to_run |> Lwt_main.run
