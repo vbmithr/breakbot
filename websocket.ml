@@ -91,11 +91,7 @@ let with_websocket uri f =
   let uri = Uri.of_string uri in
   (* let host = Opt.unopt (Uri.host uri) in *)
   (* let port = string_of_int (Opt.unopt ~default:80 (Uri.port uri)) in *)
-  let random_bits = Random.bits () in
-  let nonce = String.create 2 in
-  let _ =
-    nonce.[0] <- Char.chr ((random_bits lsr 8) land (1 lsl 8 - 1));
-    nonce.[1] <- Char.chr (random_bits land (1 lsl 8 - 1)) in
+  lwt nonce = Random.string 2 in
   let nonce64 = Cohttp.Base64.encode nonce in
   let headers =
     Cohttp.Header.of_list
@@ -117,8 +113,11 @@ let with_websocket uri f =
   let fun_ic, my_oc = Lwt_io.pipe ()
   and my_ic, fun_oc = Lwt_io.pipe () in
 
-  (* buffer to store the frame *)
-  let buf_frame = String.make (Lwt_io.default_buffer_size ()) '\000' in
+  (* buffer to store the payload *)
+  let bufsize = Lwt_io.default_buffer_size () in
+  let buf_rcvd_payload = String.make bufsize '\000' in
+
+  let buf_send_payload = String.make bufsize '\000' in
 
   let rec read_frames () =
     lwt hdr = Lwt_io.read ~count:2 ic in
@@ -136,13 +135,50 @@ let with_websocket uri f =
     lwt mask_key = if masked then Lwt_io.read ~count:4 ic else Lwt.return "" in
     let rec read_payload = function
       | 0 -> Lwt.return ()
-      | n -> (lwt bytes_read = Lwt_io.read_into ic buf_frame 0
-                (min n (Lwt_io.default_buffer_size ())) in
-              lwt () = Lwt_io.write_from_exactly my_oc buf_frame 0 bytes_read in
+      | n -> (lwt bytes_read = Lwt_io.read_into ic buf_rcvd_payload 0 bufsize in
+              lwt () = Lwt_io.write_from_exactly
+                my_oc buf_rcvd_payload 0 bytes_read in
               read_payload (n - bytes_read)) in
     lwt () = read_payload payload_len in
     lwt () = Lwt_io.write_char my_oc '\n' in
     read_frames ()
 
   in
-  Lwt.join [read_frames (); f (fun_ic, fun_oc)]
+  (* All the time, read as much as possible from fun_oc, then send the
+     message in a frame *)
+  let rec write_frames () =
+    lwt mask = Random.string 4 in
+    lwt bytes_read = Lwt_io.read_into my_ic buf_send_payload 0 bufsize in
+
+    let write_operations oc =
+      lwt () =
+        if bytes_read = bufsize then
+          (lwt () = Lwt_io.write_char oc '\001' in
+           lwt () = Lwt_io.write_char oc '\254' in
+           Lwt_io.BE.write_int16 oc 4096)
+        else
+          (lwt () = Lwt_io.write_char oc '\129' in
+           (match bytes_read with
+             | n when n < 126 ->
+               Lwt_io.write_char oc (Char.chr (128+n))
+             | n when n < (1 lsl 16) ->
+               lwt () = Lwt_io.write_char oc '\126' in
+               Lwt_io.BE.write_int16 oc bytes_read
+             | n -> (* Can never happen *)
+               lwt () = Lwt_io.write_char oc '\127' in
+               Lwt_io.BE.write_int64 oc (Int64.of_int bytes_read))
+          )
+      in
+      lwt () = Lwt_io.write_from_exactly oc mask 0 4 in
+
+      let () = for i = 0 to bytes_read - 1 do (* masking msg to send *)
+          buf_send_payload.[i] <- Char.chr
+            ((Char.code mask.[i mod 4]) lxor
+                (Char.code buf_send_payload.[i]))
+        done in
+      Lwt_io.write_from_exactly oc buf_send_payload 0 bytes_read in
+    lwt () = Lwt_io.atomic write_operations oc in
+    write_frames ()
+
+  in
+  Lwt.join [read_frames (); write_frames (); f (fun_ic, fun_oc)]
