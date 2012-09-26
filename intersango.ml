@@ -70,12 +70,12 @@ class intersango =
 object (self)
   inherit Exchange.exchange "intersango"
 
-  method update () =
+  method update =
     let rec update (ic, oc) =
       lwt line = Lwt_io.read_line ic in
       lwt () = Lwt_io.printf "%s\n" line in
       let () = Parser.parse books (Yojson.Safe.from_string ~buf line) in
-      lwt () = self#notify () in
+      lwt () = self#notify in
       update (ic, oc)
     in with_connection "db.intersango.com" "1337" update
 

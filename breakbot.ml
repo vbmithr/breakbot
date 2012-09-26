@@ -12,7 +12,8 @@ let () =
   Sys.catch_break true;
   (* Most performant method*)
   (* Lwt_unix.set_default_async_method Lwt_unix.Async_switch; *)
-  let exchanges = [new Intersango.intersango; new Mtgox.mtgox] in
+  let exchanges = [new Intersango.intersango;
+                   new Mtgox.mtgox "key" "secret"] in
   let mvars = List.map (fun xch -> xch#get_mvar) exchanges in
   let rec process mvars =
     lwt xch = Lwt.pick (List.map Lwt_mvar.take mvars) in
@@ -20,7 +21,7 @@ let () =
     process mvars in
   try
     let threads_to_run =
-      process mvars :: List.map (fun xch -> xch#update ()) exchanges in
+      process mvars :: List.map (fun xch -> xch#update) exchanges in
     Lwt.join threads_to_run |> Lwt_main.run
   with Sys.Break ->
     List.iter (fun xch -> xch#print) exchanges

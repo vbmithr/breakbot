@@ -7,10 +7,10 @@ object (self)
 
   method name      = name
   method print     = Books.print books
-  method notify () = Lwt_mvar.put mvar name
+  method notify    = Lwt_mvar.put mvar name
   method get_mvar  = mvar
 
-  method virtual update : unit -> unit Lwt.t
+  method virtual update : unit Lwt.t
   method virtual bid    : Currency.t -> int -> int -> unit Lwt.t
   method virtual ask    : Currency.t -> int -> int -> unit Lwt.t
 end
