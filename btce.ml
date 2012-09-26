@@ -34,7 +34,7 @@ module Parser = struct
                 float_of_string price, float_of_string amount
               | _ -> failwith "parse_btce_array: Invalid input 2" in
           Books.add books Currency.USD kind
-            (Satoshi.of_btc_float price) (Satoshi.of_btc_float amount)
+            (Satoshi.of_face_float price) (Satoshi.of_face_float amount)
         | _ -> failwith "parse_btce_array: Invalid input 1"
         ) json_list
       | _ -> failwith "parse_btce_array: Invalid input 0"

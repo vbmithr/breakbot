@@ -91,7 +91,7 @@ let with_websocket uri f =
   let uri = Uri.of_string uri in
   (* let host = Opt.unopt (Uri.host uri) in *)
   (* let port = string_of_int (Opt.unopt ~default:80 (Uri.port uri)) in *)
-  lwt nonce = Random.string 2 in
+  let nonce = Random.string 2 in
   let nonce64 = Cohttp.Base64.encode nonce in
   let headers =
     Cohttp.Header.of_list
@@ -147,7 +147,7 @@ let with_websocket uri f =
   (* All the time, read as much as possible from fun_oc, then send the
      message in a frame *)
   let rec write_frames () =
-    lwt mask = Random.string 4 in
+    let mask = Random.string 4 in
     lwt bytes_read = Lwt_io.read_into my_ic buf_send_payload 0 bufsize in
 
     let write_operations oc =

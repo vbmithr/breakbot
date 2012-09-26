@@ -1,7 +1,10 @@
 open Utils
 
 module Currency = struct
+
   type t   = GBP | EUR | USD | PLN | SEK
+
+  module CurrMap = Map.Make(struct type t let compare = Pervasives.compare end)
 
   let to_string = function
     | GBP -> "GBP"
@@ -19,15 +22,18 @@ module Currency = struct
     | _ -> failwith "Currency.of_string"
 end
 
-module Satoshi = struct
+module Cent = functor (R : (sig val value: float end)) -> struct
   type t = int
 
-  let of_btc_float v = int_of_float (v *. 1e8)
-  let to_btc_float v = float_of_int v /. 1e8
+  let of_face_float v = int_of_float (v *. R.value)
+  let to_face_float v = float_of_int v /. R.value
 
   let of_string = int_of_string
-  let of_btc_string v = int_of_float (float_of_string v *. 1e8)
+  let of_face_string v = int_of_float (float_of_string v *. R.value)
 end
+
+module Satoshi = Cent (struct let value = 1e8 end)
+module Dollar  = Cent (struct let value = 1e5 end)
 
 module Order = struct
   type kind = Bid | Ask
@@ -143,8 +149,8 @@ module Books : BOOKS = struct
   let print books =
     let print_one book = IntMap.iter
       (fun rate amount -> Printf.printf "(%f,%f) "
-        (Satoshi.to_btc_float rate)
-        (Satoshi.to_btc_float amount)) book in
+        (Satoshi.to_face_float rate)
+        (Satoshi.to_face_float amount)) book in
     Hashtbl.iter (fun curr (bid,_) ->
       Printf.printf "BID %s\n" (Currency.to_string curr);
       print_one bid; print_endline "";

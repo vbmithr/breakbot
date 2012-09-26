@@ -27,8 +27,8 @@ module Parser = struct
       | `Assoc l ->
         List.iter (fun (rate, amount) ->
           match amount with `String amount ->
-            (let rate = Satoshi.of_btc_string rate in
-             let amount = Satoshi.of_btc_string amount in
+            (let rate = Satoshi.of_face_string rate in
+             let amount = Satoshi.of_face_string amount in
            Books.update books curr kind rate amount)
             | _ -> failwith "Parser.parse_orderbook3"
         ) l
@@ -58,8 +58,8 @@ module Parser = struct
                ]]    ->
         let kind = Order.kind_of_string kind in
         let curr = Currency.of_int (int_of_string curr) in
-        let rate = Satoshi.of_btc_string rate in
-        let amount = Satoshi.of_btc_string amount in
+        let rate = Satoshi.of_face_string rate in
+        let amount = Satoshi.of_face_string amount in
         Books.update books curr kind rate amount
       | `List [`String "ping"; obj] -> assert (obj = `Assoc [])
       | _ -> () (* Do nothing on other messages *)
