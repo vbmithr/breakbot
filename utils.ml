@@ -52,17 +52,6 @@ module Uint8 = struct
   let max = 255
 end
 
-module Random = struct
-  include Random
-
-  let char () = Char.chr (Random.bits () land Uint8.max)
-
-  let string size =
-    let str = String.create size in
-    String.iteri (fun i _ -> str.[i] <- char ()) str;
-    str
-end
-
 module String = struct
   include String
 
@@ -125,4 +114,23 @@ module String = struct
     let write_int32 buf off i =
       let src = of_int32 i in String.blit src 0 buf off 4
   end
+end
+
+module Random = struct
+  include Random
+
+  let char () = Char.chr (Random.bits () land Uint8.max)
+
+  let int16_as_string () =
+    let str = String.create 2 in
+    String.BE.write_int16 str 0 (Random.bits ()); str
+
+  let int32_as_string () =
+    let str = String.create 4 in
+    String.BE.write_int32 str 0 (Int32.of_int (Random.bits ())); str
+
+  let string size =
+    let str = String.create size in
+    String.iteri (fun i _ -> str.[i] <- char ()) str;
+    str
 end

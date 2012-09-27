@@ -39,7 +39,10 @@ module Protocol = struct
     let nonce = Printf.sprintf "%.0f" (Unix.gettimeofday () *. 1e6) in
     let id = Digest.to_hex (Digest.string nonce) in
     `Assoc ["id", `String id; "nonce", `String nonce; "call", `String endpoint;
-            "params", `String (Opt.unopt ~default:"" params)]
+            "params", `String (Opt.unopt ~default:"" params);
+            "item", `String "BTC"]
+
+  let get_depth = query "BTCUSD/depth"
 
   let json_id_of_query = function
     | `Assoc l -> List.assoc "id" l
@@ -58,8 +61,7 @@ object (self)
 
   val key     = key
   val cmd_buf = Bi_outbuf.create 4096
-  (* To replace with unimplemented hmac_sha512 required for MtGox *)
-  val hmac    = CK.MAC.hmac_sha256 secret
+  val hmac    = CK.MAC.hmac_sha512 secret
 
   method private set_ic newic = ic <- newic
   method private set_oc newoc = oc <- newoc
@@ -78,6 +80,7 @@ object (self)
       self#set_oc oc;
       lwt () = Lwt_io.write_line oc (Yojson.Safe.to_string ~buf
                                        (unsubscribe Ticker)) in
+      lwt () = self#command Protocol.get_depth in
       main_loop () in
     Websocket.with_websocket "http://websocket.mtgox.com/mtgox" update
 
@@ -94,6 +97,7 @@ object (self)
                "context", `String "mtgox.com";
                "id", json_id_of_query query;
                "call", `String signed_request64]) in
+    let () = Printf.printf "Sending %s\n%!" res in
     Lwt_io.write_line oc res
 
   method bid curr price amount = Lwt.return ()

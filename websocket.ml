@@ -86,40 +86,39 @@ let check_response_is_conform resp nonce64 =
   if Response.status resp <> `Switching_protocols
   then raise (Response_failure Bad_status_code)
 
-let with_websocket uri f =
+let with_websocket uri_string f =
+  (* Initialisation *)
   lwt myhostname = Lwt_unix.gethostname () in
-  let uri = Uri.of_string uri in
-  (* let host = Opt.unopt (Uri.host uri) in *)
-  (* let port = string_of_int (Opt.unopt ~default:80 (Uri.port uri)) in *)
-  let nonce = Random.string 2 in
-  let nonce64 = Cohttp.Base64.encode nonce in
-  let headers =
-    Cohttp.Header.of_list
-      ["Host"                  , myhostname;
-       "Upgrade"               , "websocket";
-       "Connection"            , "Upgrade";
-       "Sec-WebSocket-Key"     , nonce64;
-       "Sec-WebSocket-Version" , "13"] in
-  lwt ic, oc = Net.connect_uri uri in
-  let req = Request.make ~headers uri in
-  lwt () = Client.write_request req oc in
-  lwt res = Client.read_response ic oc in
-  let response, _ =
-    try Opt.unopt res
-    with Opt.Unopt_none -> raise (Response_failure Response_empty) in
-  let () =
-    check_response_is_conform response nonce64 in
-
+  let uri = Uri.of_string uri_string in
   let fun_ic, my_oc = Lwt_io.pipe ()
   and my_ic, fun_oc = Lwt_io.pipe () in
-
   (* buffer to store the payload *)
   let bufsize = Lwt_io.default_buffer_size () in
   let buf_rcvd_payload = String.make bufsize '\000' in
 
-  let buf_send_payload = String.make bufsize '\000' in
+  let connect () =
+    let nonce = Random.int16_as_string () in
+    let nonce64 = Cohttp.Base64.encode nonce in
+    let headers =
+      Cohttp.Header.of_list
+        ["Host"                  , myhostname;
+         "Upgrade"               , "websocket";
+         "Connection"            , "Upgrade";
+         "Sec-WebSocket-Key"     , nonce64;
+         "Sec-WebSocket-Version" , "13"] in
+    let req = Request.make ~headers uri in
+    lwt ic, oc = Net.connect_uri uri in
+    lwt () = Client.write_request req oc in
+    lwt res = Client.read_response ic oc in
+    let response, _ =
+      try Opt.unopt res
+      with Opt.Unopt_none -> raise (Response_failure Response_empty) in
+    let () = check_response_is_conform response nonce64 in
+    let () = Printf.printf "(Re)connected to %s\n%!" uri_string in
+    Lwt.return (ic, oc)
+  in
 
-  let rec read_frames () =
+  let rec read_frames (ic,oc) =
     lwt hdr = Lwt_io.read ~count:2 ic in
     let final = hdr.[0] > '\127' in
     let () = Printf.printf "This is a final frame: %b.\n%!" final in
@@ -141,44 +140,51 @@ let with_websocket uri f =
               read_payload (n - bytes_read)) in
     lwt () = read_payload payload_len in
     lwt () = Lwt_io.write_char my_oc '\n' in
-    read_frames ()
-
+    read_frames (ic,oc)
   in
+
   (* All the time, read as much as possible from fun_oc, then send the
      message in a frame *)
-  let rec write_frames () =
-    let mask = Random.string 4 in
-    lwt bytes_read = Lwt_io.read_into my_ic buf_send_payload 0 bufsize in
-
+  let rec write_frames (ic,oc) =
+    let mask = Random.int32_as_string () in
+    lwt msg = Lwt_io.read_line my_ic in
+    let msg_len = String.length msg in
+    let () = Printf.printf "write_ops: %s\n%!" msg in
     let write_operations oc =
+      lwt () = Lwt_io.write_char oc '\129' in
       lwt () =
-        if bytes_read = bufsize then
-          (lwt () = Lwt_io.write_char oc '\001' in
-           lwt () = Lwt_io.write_char oc '\254' in
-           Lwt_io.BE.write_int16 oc 4096)
-        else
-          (lwt () = Lwt_io.write_char oc '\129' in
-           (match bytes_read with
-             | n when n < 126 ->
-               Lwt_io.write_char oc (Char.chr (128+n))
-             | n when n < (1 lsl 16) ->
-               lwt () = Lwt_io.write_char oc '\126' in
-               Lwt_io.BE.write_int16 oc bytes_read
-             | n -> (* Can never happen *)
-               lwt () = Lwt_io.write_char oc '\127' in
-               Lwt_io.BE.write_int64 oc (Int64.of_int bytes_read))
-          )
+        (match msg_len with
+          | n when n < 126 ->
+            Lwt_io.write_char oc (Char.chr (128+n))
+          | n when n < (1 lsl 16) ->
+            lwt () = Lwt_io.write_char oc '\126' in
+            Lwt_io.BE.write_int16 oc msg_len
+          | n ->
+            lwt () = Lwt_io.write_char oc '\127' in
+            Lwt_io.BE.write_int64 oc (Int64.of_int msg_len))
+
       in
       lwt () = Lwt_io.write_from_exactly oc mask 0 4 in
-
-      let () = for i = 0 to bytes_read - 1 do (* masking msg to send *)
-          buf_send_payload.[i] <- Char.chr
+      let () = for i = 0 to msg_len - 1 do (* masking msg to send *)
+          msg.[i] <- Char.chr
             ((Char.code mask.[i mod 4]) lxor
-                (Char.code buf_send_payload.[i]))
+                (Char.code msg.[i]))
         done in
-      Lwt_io.write_from_exactly oc buf_send_payload 0 bytes_read in
+      Lwt_io.write_line oc msg in
     lwt () = Lwt_io.atomic write_operations oc in
-    write_frames ()
+    write_frames (ic,oc)
 
   in
-  Lwt.join [read_frames (); write_frames (); f (fun_ic, fun_oc)]
+  let rec run_everything () =
+    try_lwt
+      lwt ic,oc = connect () in
+      lwt () = Lwt.pick [read_frames (ic,oc);
+                         write_frames (ic,oc);
+                         f (fun_ic, fun_oc)] in
+      run_everything ()
+    with
+      | exn ->
+        Printf.printf "Lost websocket connection: %s\n%s\n%!"
+          (Printexc.to_string exn) (Printexc.get_backtrace ());
+        run_everything ()
+  in run_everything ()
