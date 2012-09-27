@@ -80,7 +80,9 @@ object (self)
       self#set_oc oc;
       lwt () = Lwt_io.write_line oc (Yojson.Safe.to_string ~buf
                                        (unsubscribe Ticker)) in
-      lwt () = self#command Protocol.get_depth in
+      lwt () = Lwt_io.write_line oc (Yojson.Safe.to_string ~buf
+                                       (unsubscribe Depth)) in
+      (* lwt () = self#command Protocol.get_depth in *)
       main_loop () in
     Websocket.with_websocket "http://websocket.mtgox.com/mtgox" update
 
@@ -97,7 +99,6 @@ object (self)
                "context", `String "mtgox.com";
                "id", json_id_of_query query;
                "call", `String signed_request64]) in
-    let () = Printf.printf "Sending %s\n%!" res in
     Lwt_io.write_line oc res
 
   method bid curr price amount = Lwt.return ()
