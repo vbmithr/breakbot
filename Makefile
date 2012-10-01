@@ -10,7 +10,7 @@ debug:     $(TARGETS:.ml=.d.byte)
 profiling: $(TARGETS:.ml=.p.native)
 
 btce.[nbdp]*: btce.ml common.ml utils.ml
-breakbot.[nbdp]*: breakbot.ml websocket.ml mtgox.ml intersango.ml common.ml utils.ml
+breakbot.[nbdp]*: sharedbuf.ml breakbot.ml websocket.ml mtgox.ml intersango.ml common.ml utils.ml
 
 %.native %.byte %.d.byte %.p.native: %.ml
 	$(CC) $(OPTS) $@

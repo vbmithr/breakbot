@@ -56,33 +56,35 @@ class mtgox key secret =
 object (self)
   inherit Exchange.exchange "mtgox"
 
-  val mutable ic = Lwt_io.zero
-  val mutable oc = Lwt_io.null
+  val mutable buf_in = Sharedbuf.empty ~bufsize:0 ()
+  val mutable buf_out = Sharedbuf.empty ~bufsize:0 ()
 
   val key     = key
   val cmd_buf = Bi_outbuf.create 4096
   val hmac    = CK.MAC.hmac_sha512 secret
 
-  method private set_ic newic = ic <- newic
-  method private set_oc newoc = oc <- newoc
+  method private set_buf_in b  = buf_in <- b
+  method private set_buf_out b = buf_out <- b
 
   method update =
     let buf = Bi_outbuf.create 4096 in
-    let rec update (ic, oc) =
+    let rec update (buf_in, buf_out) =
+      self#set_buf_in buf_in;
+      self#set_buf_out buf_out;
+
       let rec main_loop () =
-        lwt line = Lwt_io.read_line ic in
-        lwt () = Lwt_io.printf "%s\n" line in
-        lwt () = self#notify in
+        lwt (_:int) = Sharedbuf.with_read buf_in (fun buf len ->
+          Printf.printf "%s\n" (String.sub buf 0 len);
+          lwt () = self#notify in Lwt.return len)
+        in
         main_loop () in
 
-      (* Initialisation: Unsubscribe from some channels *)
-      self#set_ic ic;
-      self#set_oc oc;
-      lwt () = Lwt_io.write_line oc (Yojson.Safe.to_string ~buf
-                                       (unsubscribe Ticker)) in
-      lwt () = Lwt_io.write_line oc (Yojson.Safe.to_string ~buf
-                                       (unsubscribe Depth)) in
+      lwt (_:int) = Sharedbuf.write_line buf_out
+        (Yojson.Safe.to_string ~buf (unsubscribe Ticker)) in
+      lwt (_:int) = Sharedbuf.write_line buf_out
+        (Yojson.Safe.to_string ~buf (unsubscribe Trade)) in
       (* lwt () = self#command Protocol.get_depth in *)
+
       main_loop () in
     Websocket.with_websocket "http://websocket.mtgox.com/mtgox" update
 
@@ -99,7 +101,7 @@ object (self)
                "context", `String "mtgox.com";
                "id", json_id_of_query query;
                "call", `String signed_request64]) in
-    Lwt_io.write_line oc res
+    Sharedbuf.write_line buf_out res
 
   method bid curr price amount = Lwt.return ()
   method ask curr price amount = Lwt.return ()

@@ -92,11 +92,9 @@ let with_websocket uri_string f =
   (* Initialisation *)
   lwt myhostname = Lwt_unix.gethostname () in
   let uri = Uri.of_string uri_string in
-  let fun_ic, my_oc = Lwt_io.pipe ()
-  and my_ic, fun_oc = Lwt_io.pipe () in
-  (* buffer to store the payload *)
-  let bufsize = Lwt_io.default_buffer_size () in
-  let buf_rcvd_payload = String.make bufsize '\000' in
+
+  let buf_in = Sharedbuf.empty ()
+  and buf_out = Sharedbuf.empty () in
 
   let connect () =
     let nonce = Random.int16_as_string () in
@@ -120,7 +118,7 @@ let with_websocket uri_string f =
     Lwt.return (ic, oc)
   in
 
-  let rec read_frames (ic,oc) =
+  let rec read_frames ic =
     let hdr = String.create 2 in
     lwt () = Lwt_io.read_into_exactly ic hdr 0 2 in
     let final = hdr.[0] > '\127' in
@@ -139,25 +137,29 @@ let with_websocket uri_string f =
            | _ -> failwith "Can never happen." in
          let rec read_payload = function
            | 0 -> Lwt.return ()
-           | n -> (lwt bytes_read = Lwt_io.read_into ic
-                     buf_rcvd_payload 0 bufsize in
-                   lwt () = Lwt_io.write_from_exactly
-                     my_oc buf_rcvd_payload 0 bytes_read in
-                   read_payload (n - bytes_read)) in
+           | n ->
+             lwt written = Sharedbuf.with_write buf_in
+               (fun buf ->
+                 Lwt_io.read_into ic buf 0 (String.length buf))
+             in
+             let () = Printf.printf "MtGox -> Me written in the shbuf\n%!" in
+             read_payload (n - written) in
+
          lwt () = read_payload payload_len in
-         lwt () = Lwt_io.write_char my_oc '\n' in
-         read_frames (ic,oc))
+         read_frames ic)
+
       | _ -> raise Operation_not_supported
   in
 
-  let rec write_frames (ic,oc) =
+  let rec write_frames oc =
     let mask = Random.int32_as_string () in
-    lwt msg = Lwt_io.read_line my_ic in
-    let msg_len = String.length msg in
-    let write_operations oc =
-      lwt () = Lwt_io.write_char oc '\129' in
+
+    let read_fun buf len =
+      lwt () = if len = String.length buf then
+          Lwt_io.write_char oc '\001' else (* Message need more than one frame *)
+          Lwt_io.write_char oc '\129' in (* Message can be sent in one frame *)
       lwt () =
-        (match msg_len with
+        (match len with
           | n when n < 126 ->
             Lwt_io.write_char oc (Char.chr (128+n))
           | n when n < (1 lsl 16) ->
@@ -165,26 +167,29 @@ let with_websocket uri_string f =
             Lwt_io.BE.write_int16 oc n
           | n ->
             lwt () = Lwt_io.write_char oc '\255' in
-            Lwt_io.BE.write_int64 oc (Int64.of_int n))
-
-      in
+            Lwt_io.BE.write_int64 oc (Int64.of_int n)) in
       lwt () = Lwt_io.write_from_exactly oc mask 0 4 in
-      let () = for i = 0 to msg_len - 1 do (* masking msg to send *)
-          msg.[i] <- Char.chr
-            ((Char.code mask.[i mod 4]) lxor (Char.code msg.[i]))
+      let () = for i = 0 to len - 1 do (* masking msg to send *)
+          buf.[i] <- Char.chr
+            ((Char.code mask.[i mod 4]) lxor (Char.code buf.[i]))
         done in
-      Lwt_io.write_line oc msg in
-    lwt () = Lwt_io.atomic write_operations oc in
-    let () = Printf.printf "Msg Written to MtGox\n%!" in
-    write_frames (ic,oc)
+      lwt () = Lwt_io.write_from_exactly oc buf 0 len in
+      lwt () = Lwt_io.flush oc in
+      Lwt.return len in
+
+    (* Body of the function *)
+    lwt nb_read = Sharedbuf.with_read buf_out read_fun in
+    let () = Printf.printf "Written %d bytes into the websocket\n%!" nb_read in
+    write_frames oc
 
   in
   let rec run_everything () =
     try_lwt
+      lwt () = Lwt_unix.sleep 1.0 in (* Do not try to reconnect too fast *)
       lwt ic,oc = connect () in
-      lwt () = Lwt.pick [read_frames (ic,oc);
-                         write_frames (ic,oc);
-                         f (fun_ic, fun_oc)] in
+      lwt () = Lwt.pick [read_frames ic;
+                         write_frames oc;
+                         f (buf_in, buf_out)] in
       run_everything ()
     with
       | exn ->
