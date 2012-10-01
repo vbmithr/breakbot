@@ -67,7 +67,6 @@ let check_response_is_conform resp nonce64 =
     then raise (Response_failure Bad_sec_websocket_accept) in
   let hdrs = Response.headers resp in
   let hdrs = Cohttp.Header.to_list hdrs in
-  let () = List.iter (fun (a, b) -> Printf.printf "%s: %s\n%!" a b) hdrs in
 
   (try (match List.assoc "upgrade" hdrs with
     | "WebSocket" | "websocket" -> ()
@@ -92,6 +91,8 @@ let with_websocket uri_string f =
   (* Initialisation *)
   lwt myhostname = Lwt_unix.gethostname () in
   let uri = Uri.of_string uri_string in
+  let host = Opt.unopt (Uri.host uri) in
+  let port = Opt.unopt ~default:80 (Uri.port uri) in
 
   let buf_in = Sharedbuf.empty ()
   and buf_out = Sharedbuf.empty () in
@@ -107,7 +108,9 @@ let with_websocket uri_string f =
          "Sec-WebSocket-Key"     , nonce64;
          "Sec-WebSocket-Version" , "13"] in
     let req = Request.make ~headers uri in
-    lwt ic, oc = Net.connect_uri uri in
+    (* lwt ic, oc = Net.connect_uri uri in *)
+    lwt ic, oc, sockfd = Lwt_io.open_connection_dns host (string_of_int port) in
+    let () = Lwt_unix.setsockopt sockfd Lwt_unix.TCP_NODELAY true in
     lwt () = Client.write_request req oc in
     lwt res = Client.read_response ic oc in
     let response, _ =
@@ -152,9 +155,8 @@ let with_websocket uri_string f =
   in
 
   let rec write_frames oc =
-    let mask = Random.int32_as_string () in
-
-    let read_fun buf len =
+    let rec read_fun buf len =
+      let mask = Random.int32_as_string () in
       lwt () = if len = String.length buf then
           Lwt_io.write_char oc '\001' else (* Message need more than one frame *)
           Lwt_io.write_char oc '\129' in (* Message can be sent in one frame *)
@@ -175,25 +177,23 @@ let with_websocket uri_string f =
         done in
       lwt () = Lwt_io.write_from_exactly oc buf 0 len in
       lwt () = Lwt_io.flush oc in
+      let () = Printf.printf "Written %d bytes into the websocket.\n%!" len in
       Lwt.return len in
 
     (* Body of the function *)
-    lwt nb_read = Sharedbuf.with_read buf_out read_fun in
-    let () = Printf.printf "Written %d bytes into the websocket\n%!" nb_read in
-    write_frames oc
+    let rec main_loop () =
+      lwt (_:int) = Sharedbuf.with_read buf_out read_fun in
+      main_loop ()
+
+    in
+    main_loop ()
 
   in
   let rec run_everything () =
-    try_lwt
-      lwt () = Lwt_unix.sleep 1.0 in (* Do not try to reconnect too fast *)
-      lwt ic,oc = connect () in
-      lwt () = Lwt.pick [read_frames ic;
-                         write_frames oc;
-                         f (buf_in, buf_out)] in
-      run_everything ()
-    with
-      | exn ->
-        Printf.printf "Lost websocket connection: %s\n%s\n%!"
-          (Printexc.to_string exn) (Printexc.get_backtrace ());
-        run_everything ()
+    lwt () = Lwt_unix.sleep 1.0 in (* Do not try to reconnect too fast *)
+    lwt ic,oc = connect () in
+    lwt () = Lwt.pick [read_frames ic;
+                       write_frames oc;
+                       f (buf_in, buf_out)] in
+    run_everything ()
   in run_everything ()

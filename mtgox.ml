@@ -79,11 +79,10 @@ object (self)
         in
         main_loop () in
 
-      lwt (_:int) = Sharedbuf.write_line buf_out
-        (Yojson.Safe.to_string ~buf (unsubscribe Ticker)) in
-      lwt (_:int) = Sharedbuf.write_line buf_out
-        (Yojson.Safe.to_string ~buf (unsubscribe Trade)) in
-      (* lwt () = self#command Protocol.get_depth in *)
+      lwt () = Sharedbuf.write_lines buf_out
+        [(Yojson.Safe.to_string ~buf (unsubscribe Ticker));
+         (Yojson.Safe.to_string ~buf (unsubscribe Trade))] in
+      lwt (_:int) = self#command Protocol.get_depth in
 
       main_loop () in
     Websocket.with_websocket "http://websocket.mtgox.com/mtgox" update

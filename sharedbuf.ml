@@ -30,7 +30,6 @@ let write_line buf line =
 let write_lines buf lines =
   Lwt_list.iter_s (fun l -> lwt _ = write_line buf l in Lwt.return ()) lines
 
-
 (* Unused / untested *)
 let with_write_msg buf f =
   lwt msg = f () in
