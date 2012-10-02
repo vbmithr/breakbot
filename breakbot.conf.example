@@ -1,0 +1,4 @@
+{
+  "mtgox": ["your-api-key-here",
+            "your-api-key-secret-here"]
+}
