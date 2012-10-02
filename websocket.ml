@@ -98,7 +98,7 @@ let with_websocket uri_string f =
   and buf_out = Sharedbuf.empty () in
 
   let connect () =
-    let nonce = Random.int16_as_string () in
+    let nonce = CK.Random.string CK.Random.secure_rng 2 in
     let nonce64 = Cohttp.Base64.encode nonce in
     let headers =
       Cohttp.Header.of_list
@@ -158,7 +158,7 @@ let with_websocket uri_string f =
 
   let rec write_frames oc =
     let rec read_fun buf len =
-      let mask = Random.int32_as_string () in
+      let mask = CK.Random.string CK.Random.secure_rng 4 in
       lwt () = if len = String.length buf then
           Lwt_io.write_char oc '\001' else (* Message need more than one frame *)
           Lwt_io.write_char oc '\129' in (* Message can be sent in one frame *)

@@ -8,7 +8,6 @@ open Exchange
    case that processing is indeed faster than receiving+parsing *)
 
 let () =
-  Random.self_init ();
   Sys.catch_break true;
   (* Most performant method*)
   (* Lwt_unix.set_default_async_method Lwt_unix.Async_switch; *)
