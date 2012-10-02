@@ -15,6 +15,7 @@ let () =
   let config = Config.of_file "breakbot.conf" in
   let mtgox_key, mtgox_secret = match (List.assoc "mtgox" config) with
     | [key; secret] ->
+      (* Printf.printf "%s\n%s\n%!" key secret; *)
       Uuidm.to_bytes (Opt.unopt (Uuidm.of_string key)),
       Cohttp.Base64.decode secret
     | _ -> failwith "Error reading config file."

@@ -126,30 +126,32 @@ let with_websocket uri_string f =
     lwt () = Lwt_io.read_into_exactly ic hdr 0 2 in
     let final = hdr.[0] > '\127' in
     let opcode = Opcode.of_int (Char.code hdr.[0]) in
-    let () = Printf.printf "Read a final: %b frame of type %s\n%!"
-      final (Opcode.to_string opcode) in
+    let () = if hdr.[1] > '\127' then
+        raise (Response_failure Frame_masked) in
+    lwt payload_len = match (Char.code hdr.[1]) land 127 with
+      | i when i < 126 -> Lwt.return i
+      | 126 -> Lwt_io.BE.read_int16 ic
+      | 127 -> lwt len = (Lwt_io.BE.read_int64 ic)
+               in Lwt.return (Int64.to_int len)
+      | _ -> failwith "Can never happen." in
     match opcode with
       | Opcode.Frame_text ->
-        (let () = if hdr.[1] > '\127' then
-            raise (Response_failure Frame_masked) in
-         lwt payload_len = match (Char.code hdr.[1]) land 127 with
-           | i when i < 126 -> Lwt.return i
-           | 126 -> Lwt_io.BE.read_int16 ic
-           | 127 -> lwt len = (Lwt_io.BE.read_int64 ic)
-                    in Lwt.return (Int64.to_int len)
-           | _ -> failwith "Can never happen." in
-         let rec read_payload = function
-           | 0 -> Lwt.return ()
-           | n ->
-             lwt written = Sharedbuf.with_write buf_in
-               (fun buf ->
-                 Lwt_io.read_into ic buf 0 (String.length buf))
-             in
-             let () = Printf.printf "MtGox -> Me written in the shbuf\n%!" in
-             read_payload (n - written) in
+        let rec read_payload n =
+          if n > 0 then
+            lwt written = Sharedbuf.with_write buf_in
+              (fun buf ->
+                Lwt_io.read_into ic buf 0 (String.length buf))
+            in
+            read_payload (n - written)
+          else
+            if final then
+              (* Write a zero length message *)
+              lwt (_:int) = Sharedbuf.with_write buf_in (fun buf -> Lwt.return 0)
+              in Lwt.return ()
+            else Lwt.return () in
 
-         lwt () = read_payload payload_len in
-         read_frames ic)
+        lwt () = read_payload payload_len in
+        read_frames ic
 
       | _ -> raise Operation_not_supported
   in
@@ -177,7 +179,6 @@ let with_websocket uri_string f =
         done in
       lwt () = Lwt_io.write_from_exactly oc buf 0 len in
       lwt () = Lwt_io.flush oc in
-      let () = Printf.printf "Written %d bytes into the websocket.\n%!" len in
       Lwt.return len in
 
     (* Body of the function *)

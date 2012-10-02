@@ -35,14 +35,23 @@ module Protocol = struct
     `Assoc ["op", `String "unsubscribe"; "channel",
             `String (string_of_channel channel)]
 
-  let query ?params endpoint =
+  let query ?(optfields=[]) endpoint =
     let nonce = Printf.sprintf "%.0f" (Unix.gettimeofday () *. 1e6) in
     let id = Digest.to_hex (Digest.string nonce) in
-    `Assoc ["id", `String id; "nonce", `String nonce; "call", `String endpoint;
-            "params", `String (Opt.unopt ~default:"" params);
-            "item", `String "BTC"]
+    let assoc =
+      ["id", `String id; "nonce", `String nonce; "call", `String endpoint] in
+    match optfields with
+      | [] -> `Assoc assoc
+      | l  -> `Assoc (assoc @ l)
 
-  let get_depth = query "BTCUSD/depth"
+  let get_depth = query
+    ~optfields:["item", `String "BTC"; "currency", `String "USD"] "depth"
+
+  let get_ticker = query
+    ~optfields:["item", `String "BTC"; "currency", `String "USD"] "ticker"
+
+  let get_currency_info = query
+    ~optfields:["params", `Assoc ["currency", `String "USD"]] "currency"
 
   let json_id_of_query = function
     | `Assoc l -> List.assoc "id" l
@@ -61,38 +70,42 @@ object (self)
 
   val key     = key
   val cmd_buf = Bi_outbuf.create 4096
-  val hmac    = CK.MAC.hmac_sha512 secret
 
   method private set_buf_in b  = buf_in <- b
   method private set_buf_out b = buf_out <- b
 
   method update =
-    let buf = Bi_outbuf.create 4096 in
+    let buf_json_in = Buffer.create 4096 in
     let rec update (buf_in, buf_out) =
       self#set_buf_in buf_in;
       self#set_buf_out buf_out;
 
       let rec main_loop () =
         lwt (_:int) = Sharedbuf.with_read buf_in (fun buf len ->
-          Printf.printf "%s\n" (String.sub buf 0 len);
-          lwt () = self#notify in Lwt.return len)
+          lwt () =
+            (if len > 0 then (* Uncomplete message *)
+                Lwt.return (Buffer.add_string buf_json_in (String.sub buf 0 len))
+             else
+                let () = Printf.printf "%s\n%!" (Buffer.contents buf_json_in) in
+                let () = Buffer.clear buf_json_in in (* maybe use reset here ?*)
+                self#notify)
+          in Lwt.return len)
         in
         main_loop () in
 
       lwt () = Sharedbuf.write_lines buf_out
-        [(Yojson.Safe.to_string ~buf (unsubscribe Ticker));
-         (Yojson.Safe.to_string ~buf (unsubscribe Trade))] in
-      lwt (_:int) = self#command Protocol.get_depth in
+        [(Yojson.Safe.to_string (unsubscribe Ticker));
+         (Yojson.Safe.to_string (unsubscribe Trade))] in
+      (* lwt (_:int) = self#command (Protocol.query "private/info") in *)
+      lwt (_:int) = self#command (Protocol.get_depth) in
+      (* lwt (_:int) = self#command (Protocol.get_currency_info) in *)
 
       main_loop () in
     Websocket.with_websocket "http://websocket.mtgox.com/mtgox" update
 
   method private command (query:json) =
     let query_json = Yojson.Safe.to_string ~buf:cmd_buf query in
-    let signed_query =
-      hmac#wipe;
-      hmac#add_string query_json;
-      hmac#result in
+    let signed_query = CK.hash_string (CK.MAC.hmac_sha512 secret) query_json in
     let signed_request64 = Cohttp.Base64.encode
       (key ^ signed_query ^ query_json) in
     let res = Yojson.Safe.to_string ~buf:cmd_buf
