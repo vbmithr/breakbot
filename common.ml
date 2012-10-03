@@ -23,13 +23,13 @@ module Currency = struct
 end
 
 module Cent = functor (R : (sig val value: float end)) -> struct
-  type t = int
+  type t = int64
 
-  let of_face_float v = int_of_float (v *. R.value)
-  let to_face_float v = float_of_int v /. R.value
+  let of_face_float v = Int64.of_float (v *. R.value)
+  let to_face_float v = Int64.to_float v /. R.value
 
-  let of_string = int_of_string
-  let of_face_string v = int_of_float (float_of_string v *. R.value)
+  let of_string = Int64.of_string
+  let of_face_string v = Int64.of_float (float_of_string v *. R.value)
 end
 
 module Satoshi = Cent (struct let value = 1e8 end)
@@ -48,8 +48,8 @@ module Order = struct
         direction : kind;
         stategy   : strategy;
         currency  : Currency.t;
-        price     : int; (* price in satoshis *)
-        amount    : int (* amount of BTC in satoshis *)
+        price     : int64; (* price in satoshis *)
+        amount    : int64 (* amount of BTC in satoshis *)
       }
 
   let kind_of_string str =
@@ -62,44 +62,44 @@ end
 
 (** A book represent the depth for one currency, and one order kind *)
 module Book = struct
-  type t = int IntMap.t
+  type t = int64 Int64Map.t
 
-  let empty = IntMap.empty
+  let empty = Int64Map.empty
 
   let add book price amount =
-    IntMap.add price amount book
+    Int64Map.add price amount book
 
   let update book price amount =
     try
-      let old_amount = IntMap.find price book in
-      IntMap.add price (old_amount + amount) book
-    with Not_found -> IntMap.add price amount book
+      let old_amount = Int64Map.find price book in
+      Int64Map.add price (old_amount +++ amount) book
+    with Not_found -> Int64Map.add price amount book
 
   let amount_below_or_eq book price =
-    let l, data, r = IntMap.split price book in
-    IntMap.fold (fun pr am acc -> acc + am)
-      l (Opt.unopt ~default:0 data)
+    let l, data, r = Int64Map.split price book in
+    Int64Map.fold (fun pr am acc -> acc +++ am)
+      l (Opt.unopt ~default:0L data)
 
   let amount_above_or_eq book price =
-    let l, data, r = IntMap.split price book in
-    IntMap.fold (fun pr am acc -> acc + am)
-      r (Opt.unopt ~default:0 data)
+    let l, data, r = Int64Map.split price book in
+    Int64Map.fold (fun pr am acc -> acc +++ am)
+      r (Opt.unopt ~default:0L data)
 
   let diff book1 book2 =
     let merge_fun key v1 v2 = match v1, v2 with
       | None, None       -> failwith "Should never happen"
-      | Some v1, None    -> Some (-v1)
+      | Some v1, None    -> Some (Int64.neg v1)
       | None, Some v2    -> Some v2
-      | Some v1, Some v2 -> Some (v2-v1) in
-    IntMap.merge merge_fun book1 book2
+      | Some v1, Some v2 -> Some (v2 --- v1) in
+    Int64Map.merge merge_fun book1 book2
 
   let patch book patch =
     let merge_fun key v1 v2 = match v1, v2 with
       | None, None -> failwith "Should never happen"
       | Some v1, None -> Some v1
       | None, Some v2 -> Some v2
-      | Some v1, Some v2 -> Some (v1+v2) in
-    IntMap.merge merge_fun book patch
+      | Some v1, Some v2 -> Some (v1 +++ v2) in
+    Int64Map.merge merge_fun book patch
 end
 
 (** Just a pair of two books, corresponding of bid/ask depth for one
@@ -114,8 +114,8 @@ module type BOOKS = sig
   type t
   val empty  : unit -> t
 
-  val add    : t -> Currency.t -> Order.kind -> int -> int -> unit
-  val update : t -> Currency.t -> Order.kind -> int -> int -> unit
+  val add    : t -> Currency.t -> Order.kind -> int64 -> int64 -> unit
+  val update : t -> Currency.t -> Order.kind -> int64 -> int64 -> unit
   val clear  : t -> unit
 
   val print  : t -> unit
@@ -147,7 +147,7 @@ module Books : BOOKS = struct
   let clear = Hashtbl.clear
 
   let print books =
-    let print_one book = IntMap.iter
+    let print_one book = Int64Map.iter
       (fun rate amount -> Printf.printf "(%f,%f) "
         (Satoshi.to_face_float rate)
         (Satoshi.to_face_float amount)) book in

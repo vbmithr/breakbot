@@ -1,11 +1,27 @@
 let (|>) f g = g f
 let (>>=) = Lwt.bind
+let (+++) = Int64.add
+let (---) = Int64.sub
+let ( *** ) = Int64.mul
+let (///) = Int64.div
 
-module IntMap = Map.Make(
-  struct
+module IntMap = Map.Make
+  (struct
     type t = int
     let compare = Pervasives.compare
-  end)
+   end)
+
+module Int64Map = Map.Make
+  (struct
+    type t = Int64.t
+    let compare = Int64.compare
+   end)
+
+module StringMap = Map.Make
+  (struct
+    type t = string
+    let compare = Pervasives.compare
+   end)
 
 module Opt = struct
   exception Unopt_none

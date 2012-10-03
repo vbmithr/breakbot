@@ -19,7 +19,7 @@ let () =
       Cohttp.Base64.decode secret
     | _ -> failwith "Error reading config file."
   in
-  let exchanges = [(* new Intersango.intersango; *)
+  let exchanges = [new Intersango.intersango;
                    new Mtgox.mtgox mtgox_key mtgox_secret] in
   let mvars = List.map (fun xch -> xch#get_mvar) exchanges in
   let rec process mvars =

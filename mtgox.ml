@@ -96,8 +96,8 @@ object (self)
       lwt () = Sharedbuf.write_lines buf_out
         [(Yojson.Safe.to_string (unsubscribe Ticker));
          (Yojson.Safe.to_string (unsubscribe Trade))] in
-      (* lwt (_:int) = self#command (Protocol.query "private/info") in *)
-      lwt (_:int) = self#command (Protocol.get_depth) in
+      lwt (_:int) = self#command (Protocol.query "private/info") in
+      (* lwt (_:int) = self#command (Protocol.get_depth) in *)
       (* lwt (_:int) = self#command (Protocol.get_currency_info) in *)
 
       main_loop () in

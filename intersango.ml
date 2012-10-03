@@ -77,7 +77,7 @@ object (self)
       let () = Parser.parse books (Yojson.Safe.from_string ~buf line) in
       lwt () = self#notify in
       update (ic, oc)
-    in with_connection "db.intersango.com" "1337" update
+    in Lwt_io.with_connection_dns "db.intersango.com" "1337" update
 
   method bid curr price amount = Lwt.return ()
   method ask curr price amount = Lwt.return ()
