@@ -5,23 +5,17 @@ let (---) = Int64.sub
 let ( *** ) = Int64.mul
 let (///) = Int64.div
 
+let i_int i    = fun (i:int) -> ()
+let i_float i  = fun (i:float) -> ()
+let i_string i = fun (i:string) -> ()
+
 module IntMap = Map.Make
   (struct
     type t = int
     let compare = Pervasives.compare
    end)
-
-module Int64Map = Map.Make
-  (struct
-    type t = Int64.t
-    let compare = Int64.compare
-   end)
-
-module StringMap = Map.Make
-  (struct
-    type t = string
-    let compare = Pervasives.compare
-   end)
+module Int64Map = Map.Make(Int64)
+module StringMap = Map.Make(String)
 
 module Opt = struct
   exception Unopt_none
@@ -100,6 +94,12 @@ end
 
 module String = struct
   include String
+
+  let is_int str =
+    try let (_:int) = int_of_string str in true with _ -> false
+
+  let is_float str =
+    try let (_:float) = float_of_string str in true with _ -> false
 
   module BE = struct
     let of_int32 int32 =

@@ -2,7 +2,7 @@ open Common
 
 class virtual exchange (name:string) =
 object (self)
-  val books = Books.empty ()
+  val mutable books = Books.empty
   val mvar = Lwt_mvar.create_empty ()
 
   method name      = name

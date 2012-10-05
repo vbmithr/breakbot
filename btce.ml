@@ -15,7 +15,7 @@ let exchanges = ["btce", "https://btc-e.com/api/2/btc_usd/depth";
 let exchanges = List.map (fun (a,b) -> a, Uri.of_string b) exchanges
 let buf = Bi_outbuf.create 4096
 
-let books = Books.empty ()
+let books = Books.empty
 
 module Parser = struct
   let parse ?buf books body_str =

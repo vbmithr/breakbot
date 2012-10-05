@@ -29,6 +29,6 @@ let () =
   try
     let threads_to_run =
       process mvars :: List.map (fun xch -> xch#update) exchanges in
-    Lwt.join threads_to_run |> Lwt_main.run
-  with Sys.Break ->
-    List.iter (fun xch -> xch#print) exchanges
+    Lwt.pick threads_to_run |> Lwt_main.run
+  with
+    | Sys.Break -> List.iter (fun xch -> xch#print) exchanges

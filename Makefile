@@ -1,6 +1,6 @@
 CC=ocamlbuild
 OPTS=-use-ocamlfind
-TARGETS=breakbot.ml btce.ml
+TARGETS=breakbot.ml
 
 all: native
 

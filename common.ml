@@ -1,10 +1,9 @@
 open Utils
 
 module Currency = struct
+  type t = GBP | EUR | USD | PLN | SEK
 
-  type t   = GBP | EUR | USD | PLN | SEK
-
-  module CurrMap = Map.Make(struct type t let compare = Pervasives.compare end)
+  let compare = Pervasives.compare
 
   let to_string = function
     | GBP -> "GBP"
@@ -21,6 +20,8 @@ module Currency = struct
     | "SEK" -> SEK
     | _ -> failwith "Currency.of_string"
 end
+
+module CurrencyMap = Map.Make(Currency)
 
 module Cent = functor (R : (sig val value: float end)) -> struct
   type t = int64
@@ -62,14 +63,9 @@ end
 
 (** A book represent the depth for one currency, and one order kind *)
 module Book = struct
-  type t = int64 Int64Map.t
+  include Int64Map
 
-  let empty = Int64Map.empty
-
-  let add book price amount =
-    Int64Map.add price amount book
-
-  let update book price amount =
+  let update price amount book =
     try
       let old_amount = Int64Map.find price book in
       Int64Map.add price (old_amount +++ amount) book
@@ -102,60 +98,51 @@ module Book = struct
     Int64Map.merge merge_fun book patch
 end
 
-(** Just a pair of two books, corresponding of bid/ask depth for one
-    currency *)
-module BookPair = struct
-  type t = Book.t * Book.t
-
-  let empty = Book.empty, Book.empty
-end
-
 module type BOOKS = sig
   type t
-  val empty  : unit -> t
+  val empty  : t
 
-  val add    : t -> Currency.t -> Order.kind -> int64 -> int64 -> unit
-  val update : t -> Currency.t -> Order.kind -> int64 -> int64 -> unit
-  val clear  : t -> unit
+  val add    : t -> Currency.t -> Order.kind -> int64 -> int64 -> t
+  val update : t -> Currency.t -> Order.kind -> int64 -> int64 -> t
+
+  val remove : t -> Currency.t -> t
 
   val print  : t -> unit
 end
 
 (** Books are a hashtbl of BookPairs, one for each currency *)
 module Books : BOOKS = struct
-  type t = (Currency.t, BookPair.t) Hashtbl.t
+  type t = (int64 Book.t * int64 Book.t) CurrencyMap.t
 
-  let empty () = Hashtbl.create 10
+  let empty = CurrencyMap.empty
 
   let modify action_fun books curr kind price amount =
     let bid, ask =
-      try Hashtbl.find books curr
-      with Not_found -> BookPair.empty in
-      match kind with
-        | Order.Bid ->
-          let newbook = action_fun bid price amount in
-          Hashtbl.replace books curr (newbook, ask)
-        | Order.Ask ->
-          let newbook = action_fun ask price amount in
-          Hashtbl.replace books curr (bid, newbook)
+      try CurrencyMap.find curr books
+      with Not_found -> (Book.empty, Book.empty)  in
+    match kind with
+      | Order.Bid ->
+        let newbook = action_fun price amount bid in
+        CurrencyMap.add curr (newbook, ask) books
+      | Order.Ask ->
+        let newbook = action_fun price amount ask in
+        CurrencyMap.add curr (bid, newbook) books
 
   let add    = modify Book.add
   let update = modify Book.update
 
-  let remove books curr = Hashtbl.remove books curr
-
-  let clear = Hashtbl.clear
+  let remove books curr = CurrencyMap.remove curr books
 
   let print books =
     let print_one book = Int64Map.iter
       (fun rate amount -> Printf.printf "(%f,%f) "
         (Satoshi.to_face_float rate)
         (Satoshi.to_face_float amount)) book in
-    Hashtbl.iter (fun curr (bid,_) ->
+    CurrencyMap.iter (fun curr (bid,_) ->
       Printf.printf "BID %s\n" (Currency.to_string curr);
       print_one bid; print_endline "";
     ) books;
-    Hashtbl.iter (fun curr (_,ask) ->
+    CurrencyMap.iter (fun curr (_,ask) ->
       Printf.printf "ASK %s\n" (Currency.to_string curr);
       print_one ask; print_endline "";
     ) books

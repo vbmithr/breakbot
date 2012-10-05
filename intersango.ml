@@ -1,10 +1,8 @@
 open Utils
 open Common
 
-open Yojson.Safe
-
 module Currency = struct
-    include Common.Currency
+  include Common.Currency
 
   let to_int = function
     | GBP -> 1
@@ -22,59 +20,70 @@ module Currency = struct
 end
 
 module Parser = struct
-  let parse books json =
-    let parse_orderbook3 curr kind = function
-      | `Assoc l ->
-        List.iter (fun (rate, amount) ->
-          match amount with `String amount ->
-            (let rate = Satoshi.of_face_string rate in
-             let amount = Satoshi.of_face_string amount in
-           Books.update books curr kind rate amount)
-            | _ -> failwith "Parser.parse_orderbook3"
-        ) l
-      | _        -> failwith "Parser.parse_orderbook3" in
-    let parse_orderbook2 curr = function
-      | `Assoc l ->
-        List.iter (fun (kind, obj) ->
-          let kind = Order.kind_of_string kind in
-          parse_orderbook3 curr kind obj) l
-      | _        -> failwith "Parser.parse_orderbook2" in
-    let parse_orderbook1 = function
-      | `Assoc l ->
-        List.iter (fun (curr, obj) ->
-          let curr = Currency.of_int (int_of_string curr) in
-          parse_orderbook2 curr obj) l
-      | _        -> failwith "Parser.parse_orderbook1" in
-    match json with
-      | `List [`String "orderbook"; obj] ->
-        parse_orderbook1 obj
+  let parse_orderbook books decoder =
+    let rec parse_orderbook ?curr ?kind ?price books =
+      match Jsonm.decode decoder with
+        | `Lexeme (`Name "bids") ->
+          parse_orderbook ?price ?curr ~kind:Order.Bid books
+        | `Lexeme (`Name "asks") ->
+          parse_orderbook ?price ?curr ~kind:Order.Ask books
+        | `Lexeme (`Name s) when String.is_int s ->
+          let curr = Currency.of_int (int_of_string s)
+          in parse_orderbook ?kind ?price ~curr books
+        | `Lexeme (`Name s) when String.is_float s ->
+          let price = Satoshi.of_face_string s in
+          let amount = match Jsonm.decode decoder with
+            | `Lexeme (`String am) -> Satoshi.of_face_string am
+            | _ -> failwith "parse_orderbook" in
+          let kind = Opt.unopt kind in
+          let curr = Opt.unopt curr in
+          let books = Books.update books curr kind price amount in
+          parse_orderbook ~curr ~kind books
+        | `Lexeme `Ae -> books
+        | `Lexeme l -> parse_orderbook ?curr ?kind ?price books
+        | `Error e -> Jsonm.pp_error Format.err_formatter e; books
+        | `Await -> Printf.printf "Awaiting...\n%!"; books
+        | `End -> Printf.printf "End...\n%!"; books
+    in parse_orderbook books
 
-      | `List [`String "depth";
-               `Assoc [
-                 "currency_pair_id", `String curr;
-                 "rate", `String rate;
-                 "type", `String kind;
-                 "amount", `String amount
-               ]]    ->
-        let kind = Order.kind_of_string kind in
-        let curr = Currency.of_int (int_of_string curr) in
-        let rate = Satoshi.of_face_string rate in
-        let amount = Satoshi.of_face_string amount in
-        Books.update books curr kind rate amount
-      | `List [`String "ping"; obj] -> assert (obj = `Assoc [])
-      | _ -> () (* Do nothing on other messages *)
+  let parse_depth books decoder =
+    let rec parse_depth ?name acc =
+      match Jsonm.decode decoder with
+        | `Lexeme (`Name s) -> parse_depth ~name:s acc
+        | `Lexeme (`String s) -> let (name:string) = Opt.unopt name
+                      in parse_depth ((name, s)::acc)
+        | `Lexeme `Ae ->
+          let kind = Order.kind_of_string (List.assoc "type" acc) in
+          let curr = Currency.of_int
+            (int_of_string ((List.assoc "currency_pair_id" acc))) in
+          let price = Satoshi.of_face_string (List.assoc "rate" acc) in
+          let amount = Satoshi.of_face_string (List.assoc "amount" acc) in
+          Books.update books curr kind price amount
+        | `Lexeme _ -> parse_depth acc
+        | `Error e -> Jsonm.pp_error Format.err_formatter e; books
+        | `Await -> Printf.printf "Awaiting...\n%!"; books
+        | `End -> Printf.printf "End...\n%!"; books
+
+    in parse_depth []
+
+  let rec parse_jsonm books decoder =
+    match Jsonm.decode decoder with
+      | `Lexeme (`String "orderbook") -> parse_orderbook books decoder
+      | `Lexeme (`String "depth")     -> parse_depth books decoder
+      | `Lexeme l                     -> parse_jsonm books decoder
+      | _  -> failwith "parse_jsonm"
 end
 
 class intersango =
-  let buf = Bi_outbuf.create 4096 in
 object (self)
   inherit Exchange.exchange "intersango"
 
   method update =
     let rec update (ic, oc) =
       lwt line = Lwt_io.read_line ic in
-      lwt () = Lwt_io.printf "%s\n" line in
-      let () = Parser.parse books (Yojson.Safe.from_string ~buf line) in
+      let () = Printf.printf "%s\n%!" line in
+      let decoder = Jsonm.decoder (`String line) in
+      let () = books <- Parser.parse_jsonm books decoder in
       lwt () = self#notify in
       update (ic, oc)
     in Lwt_io.with_connection_dns "db.intersango.com" "1337" update
