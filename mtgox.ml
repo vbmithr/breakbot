@@ -1,4 +1,5 @@
 open Utils
+open Common
 open Yojson.Safe
 
 module CK = Cryptokit
@@ -36,7 +37,7 @@ module Protocol = struct
             `String (string_of_channel channel)]
 
   let query ?(optfields=[]) endpoint =
-    let nonce = Printf.sprintf "%.0f" (Unix.gettimeofday () *. 1e6) in
+    let nonce = Unix.getmicrotime_str () in
     let id = Digest.to_hex (Digest.string nonce) in
     let assoc =
       ["id", `String id; "nonce", `String nonce; "call", `String endpoint] in
@@ -57,6 +58,104 @@ module Protocol = struct
     | `Assoc l -> List.assoc "id" l
     | _ -> failwith "id_of_query"
 
+  module LL = struct
+    type depth =
+        {
+          currency: string;
+          item: string;
+          now: string;
+          price: string;
+          price_int: string;
+          total_volume_int: string;
+          type_: int;
+          type_str: string;
+          volume: string;
+          volume_int: string;
+        } with rpc ("type_" -> "type")
+
+    type depth_msg =
+        {
+          channel: string;
+          depth: depth;
+          op: string;
+          origin: string;
+          private_: string;
+        } with rpc ("private_" -> "private")
+  end
+
+  module HL = struct
+    type depth =
+        {
+          curr: Currency.t;
+          kind: Order.kind;
+          price: int64;
+          amount: int64;
+          ts: int64
+        }
+
+    let of_depth (d:LL.depth_msg) =
+      let d = d.LL.depth in
+      {
+        curr=Currency.of_string d.LL.currency;
+        kind=Order.kind_of_string d.LL.type_str;
+        price=Int64.of_string d.LL.price_int;
+        amount=Int64.of_string d.LL.total_volume_int;
+        ts=Int64.of_string d.LL.now
+      }
+  end
+
+end
+
+module Parser = struct
+  open Protocol
+  let parse_depth books rpc =
+    let ll = LL.depth_msg_of_rpc rpc in
+    let hl = HL.of_depth ll in
+    Books.add ~ts:hl.HL.ts books
+      hl.HL.curr hl.HL.kind hl.HL.price hl.HL.amount
+
+  let parse_orderbook books decoder =
+    let rec parse_orderbook ?kind books =
+      let rec parse_line ?name acc =
+        let unstr = function `String str -> str | _ -> failwith "unstr" in
+        match Jsonm.decode decoder with
+          | `Lexeme (`Name s) -> parse_line ~name:s acc
+          | `Lexeme lex -> parse_line ((Opt.unopt name, lex)::acc)
+          | `Oe ->
+            let ts = Int64.of_string (List.assoc "stamp" acc |> unstr)
+            and price = Int64.of_string
+              (List.assoc "price_int" acc |> unstr)
+            and amount = Int64.of_string
+              (List.assoc "amount_int" acc |> unstr) in
+            Books.add ~ts books (Currency.USD) (Opt.unopt kind) price amount
+          | _ -> failwith "parse_line" in
+
+      match Jsonm.decode decoder with
+        | `Lexeme (`Name "bids") ->
+          parse_orderbook ~kind:Order.Bid books
+        | `Lexeme (`Name "asks") ->
+          parse_orderbook ~kind:Order.Ask books
+        | `Os ->
+          (try parse_orderbook ?kind (parse_line [])
+          with Opt.Unopt_none -> parse_orderbook ?kind books)
+
+        | _  -> parse_orderbook ?kind books
+    in parse_orderbook books
+
+  let rec parse books json_str =
+    if (String.length json_str) > 4096 then (* It is the depths *)
+      let decoder = Jsonm.decoder (`String json_str) in
+      Lwt.return (parse_orderbook books decoder)
+    else
+      try_lwt
+        let rpc = Jsonrpc.of_string json_str in
+        Lwt.choose [Lwt.wrap2 parse_depth books rpc]
+      with e ->
+        Printf.printf "Failed to parse automatically: %s\n"
+          (Printexc.to_string e);
+        (* Automatic parsing failed *)
+        let decoder = Jsonm.decoder (`String json_str) in
+        Lwt.return (parse_orderbook books decoder)
 end
 
 open Protocol
@@ -86,7 +185,10 @@ object (self)
             (if len > 0 then (* Uncomplete message *)
                 Lwt.return (Buffer.add_string buf_json_in (String.sub buf 0 len))
              else
-                let () = Printf.printf "%s\n%!" (Buffer.contents buf_json_in) in
+                let buf_str = Buffer.contents buf_json_in in
+                let () = Printf.printf "%s\n%!" buf_str in
+                (* lwt new_books = Parser.parse books buf_str in *)
+                (* let () = books <- new_books in *)
                 let () = Buffer.clear buf_json_in in (* maybe use reset here ?*)
                 self#notify)
           in Lwt.return len)
@@ -96,8 +198,8 @@ object (self)
       lwt () = Sharedbuf.write_lines buf_out
         [(Yojson.Safe.to_string (unsubscribe Ticker));
          (Yojson.Safe.to_string (unsubscribe Trade))] in
-      lwt (_:int) = self#command (Protocol.query "private/info") in
-      (* lwt (_:int) = self#command (Protocol.get_depth) in *)
+      (* lwt (_:int) = self#command (Protocol.query "private/info") in *)
+      lwt (_:int) = self#command (Protocol.get_depth) in
       (* lwt (_:int) = self#command (Protocol.get_currency_info) in *)
 
       main_loop () in

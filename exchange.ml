@@ -6,7 +6,8 @@ object (self)
   val mvar = Lwt_mvar.create_empty ()
 
   method name      = name
-  method print     = Books.print books
+  method print     = Printf.printf "Books for exchange %s:\n%!" name;
+    Books.print books
   method notify    = Lwt_mvar.put mvar name
   method get_mvar  = mvar
 

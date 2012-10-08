@@ -22,3 +22,8 @@ let get_rates ?(url=url) () =
         | _ -> parse acc input
   in
   Lwt.return (parse [] xml_input)
+
+let get_rates_dollar ?(url=url) () =
+  let rates = get_rates ?url () in
+  let dollar_rate = List.assoc "USD" rates in
+  ("EUR", 1 /. dollar_rate) :: List.map (fun (_,r) -> r /. dollar_rate) rates

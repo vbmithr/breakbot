@@ -27,6 +27,18 @@ module Opt = struct
       | _            -> raise Unopt_none
 end
 
+module Unix = struct
+  include Unix
+
+  let gettimeofday_int () = int_of_float (Unix.gettimeofday ())
+  let gettimeofday_str () = Printf.sprintf "%.0f" (Unix.gettimeofday ())
+
+  let getmicrotime () = Unix.gettimeofday () *. 1e6
+  let getmicrotime_int64 () = Int64.of_float (Unix.gettimeofday () *. 1e6)
+  let getmicrotime_str () = Printf.sprintf "%.0f" (Unix.gettimeofday () *. 1e6)
+
+end
+
 module Lwt_io = struct
   include Lwt_io
   open Lwt
