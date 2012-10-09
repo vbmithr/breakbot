@@ -115,32 +115,39 @@ module Parser = struct
       hl.HL.curr hl.HL.kind hl.HL.price hl.HL.amount
 
   let parse_orderbook books decoder =
-    let rec parse_orderbook ?kind books =
-      let rec parse_line ?name acc =
-        let unstr = function `String str -> str | _ -> failwith "unstr" in
-        match Jsonm.decode decoder with
-          | `Lexeme (`Name s) -> parse_line ~name:s acc
-          | `Lexeme lex -> parse_line ((Opt.unopt name, lex)::acc)
-          | `Oe ->
-            let ts = Int64.of_string (List.assoc "stamp" acc |> unstr)
-            and price = Int64.of_string
-              (List.assoc "price_int" acc |> unstr)
-            and amount = Int64.of_string
-              (List.assoc "amount_int" acc |> unstr) in
-            Books.add ~ts books (Currency.USD) (Opt.unopt kind) price amount
-          | _ -> failwith "parse_line" in
+    let rec parse_orderbook ctx books =
+      let unstr = function `String str -> str | _ -> failwith "unstr" in
+
+      let parse_array ctx books =
+        let rec parse_array acc books =
+          match Jsonm.decode decoder with
+            | `Lexeme (`Name s) -> (match Jsonm.decode decoder with
+                | `Lexeme lex ->
+                  parse_array ((s, lex)::acc) books
+                | _ -> failwith "parse_array")
+            | `Lexeme `Oe ->
+              let ts = Int64.of_string (List.assoc "stamp" acc |> unstr)
+              and price = Int64.of_string
+                (List.assoc "price_int" acc |> unstr)
+              and amount = Int64.of_string
+                (List.assoc "amount_int" acc |> unstr) in
+              let books =
+                Books.add ~ts books (Currency.USD) (Order.kind_of_string ctx)
+                  price amount in
+              parse_array [] books
+            | `Lexeme `Ae -> parse_orderbook "" books
+            | _ -> parse_array acc books in
+        parse_array [] books in
 
       match Jsonm.decode decoder with
-        | `Lexeme (`Name "bids") ->
-          parse_orderbook ~kind:Order.Bid books
-        | `Lexeme (`Name "asks") ->
-          parse_orderbook ~kind:Order.Ask books
-        | `Os ->
-          (try parse_orderbook ?kind (parse_line [])
-          with Opt.Unopt_none -> parse_orderbook ?kind books)
-
-        | _  -> parse_orderbook ?kind books
-    in parse_orderbook books
+        | `Lexeme `Os       -> parse_orderbook ctx books
+        | `Lexeme (`Name s) -> parse_orderbook s books
+        | `Lexeme `As       -> parse_array ctx books
+        | `Lexeme _         -> parse_orderbook "" books
+        | `Error e          -> Jsonm.pp_error Format.err_formatter e; books
+        | `Await            -> books
+        | `End              -> books
+    in parse_orderbook "" books
 
   let rec parse books json_str =
     if (String.length json_str) > 4096 then (* It is the depths *)
@@ -187,8 +194,8 @@ object (self)
              else
                 let buf_str = Buffer.contents buf_json_in in
                 let () = Printf.printf "%s\n%!" buf_str in
-                (* lwt new_books = Parser.parse books buf_str in *)
-                (* let () = books <- new_books in *)
+                lwt new_books = Parser.parse books buf_str in
+                let () = books <- new_books in
                 let () = Buffer.clear buf_json_in in (* maybe use reset here ?*)
                 self#notify)
           in Lwt.return len)
