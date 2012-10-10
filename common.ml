@@ -1,28 +1,5 @@
 open Utils
 
-module Currency = struct
-  type t = GBP | EUR | USD | PLN | SEK
-
-  let compare = Pervasives.compare
-
-  let to_string = function
-    | GBP -> "GBP"
-    | EUR -> "EUR"
-    | USD -> "USD"
-    | PLN -> "PLN"
-    | SEK -> "SEK"
-
-  let of_string = function
-    | "GBP" -> GBP
-    | "EUR" -> EUR
-    | "USD" -> USD
-    | "PLN" -> PLN
-    | "SEK" -> SEK
-    | _ -> failwith "Currency.of_string"
-end
-
-module CurrencyMap = Map.Make(Currency)
-
 module Cent = functor (R : (sig val value: float end)) -> struct
   include Int64
 
@@ -46,7 +23,7 @@ module Order = struct
       {
         direction : kind;
         stategy   : strategy;
-        currency  : Currency.t;
+        currency  : string;
         price     : int64; (* price in satoshis *)
         amount    : int64 (* amount of BTC in satoshis *)
       }
@@ -71,6 +48,8 @@ module type BOOK = sig
 
   val amount_below_or_eq : value t -> int64 -> int64
   val amount_above_or_eq : value t -> int64 -> int64
+
+  val arbiter_unsafe : value t -> value t -> int64
 end
 
 (** A book represent the depth for one currency, and one order kind *)
@@ -96,7 +75,14 @@ module Book : BOOK = struct
   let amount_above_or_eq book price =
     let l, data, r = Int64Map.split price book in
     Int64Map.fold (fun pr (am,_) acc -> acc +++ am)
-      r (fst (Opt.unopt ~default:(0L, 0L) data))
+      r (fst (Opt.unopt ~default:(0L,0L) data))
+
+  (** Gives the quantity that can be arbitraged. This function does
+      not check that [bid] and [ask] are really bid resp. ask books *)
+  let arbiter_unsafe bid ask =
+    let max_bid = fst (max_binding bid)
+    and min_ask = fst (min_binding ask) in
+    min (amount_below_or_eq ask max_bid) (amount_above_or_eq bid min_ask)
 
   let diff book1 book2 =
     let merge_fun key v1 v2 = match v1, v2 with
@@ -118,39 +104,55 @@ end
 
 module BooksFunctor = struct
   module Make (B : BOOK) = struct
-    type t = (B.value B.t * B.value B.t) CurrencyMap.t
+    type t = (B.value B.t * B.value B.t) StringMap.t
 
-    let empty = CurrencyMap.empty
+    let (empty:t) = StringMap.empty
 
     let modify
-      (action_fun : ?ts:int64 -> int64 -> int64 -> B.value B.t -> B.value B.t)
-      ?(ts=Unix.getmicrotime_int64 ())
-      books curr kind price amount =
+        (action_fun : ?ts:int64 -> int64 -> int64 -> B.value B.t -> B.value B.t)
+        ?(ts=Unix.getmicrotime_int64 ())
+        books curr kind price amount =
       let bid, ask =
-        try CurrencyMap.find curr books
+        try StringMap.find curr books
         with Not_found -> (B.empty, B.empty)  in
       match kind with
         | Order.Bid ->
           let newbook = action_fun ~ts price amount bid in
-          CurrencyMap.add curr (newbook, ask) books
+          StringMap.add curr (newbook, ask) books
         | Order.Ask ->
           let newbook = action_fun ~ts price amount ask in
-          CurrencyMap.add curr (bid, newbook) books
+          StringMap.add curr (bid, newbook) books
 
     let add = modify B.add
     let update = modify B.update
 
-    let remove books curr = CurrencyMap.remove curr books
+    let remove books curr = StringMap.remove curr books
+
+    let arbiter_unsafe curr convs (books1:t) basecurr1 (books2:t) basecurr2 =
+      let convert_from_base (books:t) basecurr =
+        let conv = convs basecurr curr in
+        let b1, a1 = StringMap.find basecurr books in
+        B.map (fun (am, ts) -> (conv am), ts) b1,
+        B.map (fun (am, ts) -> (conv am), ts) a1 in
+
+      let b1, a1 =
+        try StringMap.find curr books1
+        with Not_found -> convert_from_base books1 basecurr1
+      and b2, a2 =
+        try StringMap.find curr books2
+        with Not_found -> convert_from_base books2 basecurr2
+      in
+      (B.arbiter_unsafe b1 a2), (B.arbiter_unsafe b2 a1)
 
     let print books =
       let print_one book = Book.iter
         (fun price (amount,ts) -> Printf.printf "(%f,%f) "
           (Dollar.to_face_float price)
           (Satoshi.to_face_float amount)) book in
-      CurrencyMap.iter (fun curr (bid,ask) ->
-        Printf.printf "BID %s\n" (Currency.to_string curr);
+      StringMap.iter (fun curr (bid,ask) ->
+        Printf.printf "BID %s\n" curr;
         print_one bid; print_endline "";
-        Printf.printf "ASK %s\n" (Currency.to_string curr);
+        Printf.printf "ASK %s\n" curr;
         print_one ask; print_endline ""
       ) books
   end

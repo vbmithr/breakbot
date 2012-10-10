@@ -2,20 +2,18 @@ open Utils
 open Common
 
 module Currency = struct
-  include Common.Currency
-
   let to_int = function
-    | GBP -> 1
-    | EUR -> 2
-    | USD -> 3
-    | PLN -> 4
+    | "GBP" -> 1
+    | "EUR" -> 2
+    | "USD" -> 3
+    | "PLN" -> 4
     | _ -> failwith "Currency.to_int"
 
   let of_int = function
-    | 1 -> GBP
-    | 2 -> EUR
-    | 3 -> USD
-    | 4 -> PLN
+    | 1 -> "GBP"
+    | 2 -> "EUR"
+    | 3 -> "USD"
+    | 4 -> "PLN"
     | _ -> failwith "Currency.of_int"
 end
 
@@ -34,14 +32,15 @@ module Parser = struct
           let price = Dollar.of_face_string s in
           let amount = match Jsonm.decode decoder with
             | `Lexeme (`String am) -> Satoshi.of_face_string am
-            | _ -> failwith "parse_orderbook" in
+            | _ -> failwith "Intersango probably changed its format" in
           let kind = Opt.unopt kind in
           let curr = Opt.unopt curr in
           let books = Books.update books curr kind price amount in
           parse_orderbook ~curr ~kind books
         | `Lexeme `Ae -> books
         | `Lexeme l -> parse_orderbook ?curr ?kind ?price books
-        | `Error e -> Jsonm.pp_error Format.err_formatter e; books
+        | `Error e -> Jsonm.pp_error Format.err_formatter e;
+          failwith "Intersango.Parser.parse_orderbook"
         | `Await -> Printf.printf "Awaiting...\n%!"; books
         | `End -> Printf.printf "End...\n%!"; books
     in parse_orderbook books
@@ -60,7 +59,8 @@ module Parser = struct
           let amount = Satoshi.of_face_string (List.assoc "amount" acc) in
           Books.update books curr kind price amount
         | `Lexeme _ -> parse_depth acc
-        | `Error e -> Jsonm.pp_error Format.err_formatter e; books
+        | `Error e -> Jsonm.pp_error Format.err_formatter e;
+          failwith "Intersango.Parser.parse_detph"
         | `Await -> Printf.printf "Awaiting...\n%!"; books
         | `End -> Printf.printf "End...\n%!"; books
 
@@ -71,7 +71,10 @@ module Parser = struct
       | `Lexeme (`String "orderbook") -> parse_orderbook books decoder
       | `Lexeme (`String "depth")     -> parse_depth books decoder
       | `Lexeme l                     -> parse_jsonm books decoder
-      | _  -> failwith "parse_jsonm"
+      | `Error e -> Jsonm.pp_error Format.err_formatter e;
+        failwith "Intersango.Parser.parse_jsonm"
+      | `Await -> Printf.printf "Awaiting...\n%!"; books
+      | `End -> Printf.printf "End...\n%!"; books
 end
 
 class intersango =
@@ -87,6 +90,10 @@ object (self)
       lwt () = self#notify in
       update (ic, oc)
     in Lwt_io.with_connection_dns "db.intersango.com" "1337" update
+
+  method currs = stringset_of_list ["GBP"; "EUR"; "USD"; "PLN"]
+
+  method base_curr = "GBP"
 
   method bid curr price amount = Lwt.return ()
   method ask curr price amount = Lwt.return ()

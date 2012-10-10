@@ -1,5 +1,6 @@
 let (|>) f g = g f
 let (>>=) = Lwt.bind
+let (>|=) = Lwt.map
 let (+++) = Int64.add
 let (---) = Int64.sub
 let ( *** ) = Int64.mul
@@ -16,6 +17,10 @@ module IntMap = Map.Make
    end)
 module Int64Map = Map.Make(Int64)
 module StringMap = Map.Make(String)
+module StringSet = Set.Make(String)
+
+let stringset_of_list l =
+  List.fold_left (fun acc v -> StringSet.add v acc) StringSet.empty l
 
 module Opt = struct
   exception Unopt_none

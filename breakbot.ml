@@ -19,13 +19,38 @@ let () =
       Cohttp.Base64.decode secret
     | _ -> failwith "Error reading config file."
   in
-  let exchanges = [new Intersango.intersango;
-                   new Mtgox.mtgox mtgox_key mtgox_secret] in
+  let exchanges =
+    [new Intersango.intersango;
+     new Mtgox.mtgox mtgox_key mtgox_secret] in
   let mvars = List.map (fun xch -> xch#get_mvar) exchanges in
-  let rec process mvars =
-    lwt xch = Lwt.pick (List.map Lwt_mvar.take mvars) in
-    lwt () = Lwt_io.printf "Exchange %s has just been updated!\n" xch in
-    process mvars in
+  let process mvars =
+    lwt converters = Ecb.converters in
+    let rec process () =
+      lwt xch = Lwt.pick (List.map Lwt_mvar.take mvars) in
+      let () = Printf.printf "Exchange %s has just been updated!\n" xch#name in
+      let other_xchs = List.filter (fun x -> x != xch) exchanges in
+      let arbiter_one x1 x2 =
+        let () = Printf.printf "Arbitrage table for: %s <-> %s\n%!"
+          x1#name x2#name in
+        let common_currs = StringSet.inter x1#currs x2#currs in
+        let res =
+          StringSet.fold
+            (fun curr acc ->
+              let ret =
+                try
+                  Books.arbiter_unsafe
+                    curr converters x1#get_books x1#base_curr
+                    x2#get_books x2#base_curr
+                with Not_found -> (0L,0L)
+              in ((curr, ret)::acc)
+            ) common_currs [] in
+        List.iter (fun (curr, (am1, am2)) ->
+          Printf.printf "%s -> : %f \n%!" curr (Satoshi.to_face_float am1);
+          Printf.printf "%s <- : %f \n%!" curr (Satoshi.to_face_float am2)) res in
+      let () = List.iter (fun x -> arbiter_one xch x) other_xchs in
+      process ()
+    in process ()
+  in
   try
     let threads_to_run =
       process mvars :: List.map (fun xch -> xch#update) exchanges in

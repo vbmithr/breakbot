@@ -86,7 +86,7 @@ module Protocol = struct
   module HL = struct
     type depth =
         {
-          curr: Currency.t;
+          curr: string;
           kind: Order.kind;
           price: int64;
           amount: int64;
@@ -96,7 +96,7 @@ module Protocol = struct
     let of_depth (d:LL.depth_msg) =
       let d = d.LL.depth in
       {
-        curr=Currency.of_string d.LL.currency;
+        curr=d.LL.currency;
         kind=Order.kind_of_string d.LL.type_str;
         price=Int64.of_string d.LL.price_int;
         amount=Int64.of_string d.LL.total_volume_int;
@@ -132,7 +132,7 @@ module Parser = struct
               and amount = Int64.of_string
                 (List.assoc "amount_int" acc |> unstr) in
               let books =
-                Books.add ~ts books (Currency.USD) (Order.kind_of_string ctx)
+                Books.add ~ts books "USD" (Order.kind_of_string ctx)
                   price amount in
               parse_array [] books
             | `Lexeme `Ae -> parse_orderbook "" books
@@ -223,6 +223,12 @@ object (self)
                "id", json_id_of_query query;
                "call", `String signed_request64]) in
     Sharedbuf.write_line buf_out res
+
+  method currs = stringset_of_list
+    ["USD"; "AUD"; "CAD"; "CHF"; "CNY"; "DKK"; "EUR"; "GBP";
+     "HKD"; "JPY"; "NZD"; "PLN"; "RUB"; "SEK"; "SGD"; "THB"]
+
+  method base_curr = "USD"
 
   method bid curr price amount = Lwt.return ()
   method ask curr price amount = Lwt.return ()
