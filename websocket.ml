@@ -49,14 +49,14 @@ module Opcode = struct
     | i when i > 2 && i < 8 -> Frame_oth_nonctrl
     | _ -> Frame_oth_ctrl
 
-  let to_int op = function
+  let to_int = function
     | Frame_continuation -> 0
     | Frame_text         -> 1
     | Frame_binary       -> 2
     | Frame_close        -> 8
     | Frame_ping         -> 9
     | Frame_pong         -> 10
-    | _ -> failwith "Opcode.to_char: Invalid frame type"
+    | _ -> failwith "Opcode.to_int: Invalid frame type"
 end
 
 let check_response_is_conform resp nonce64 =
@@ -140,20 +140,26 @@ let with_websocket uri_string f =
           if n > 0 then
             lwt written = Sharedbuf.with_write buf_in
               (fun buf ->
-                Lwt_io.read_into ic buf 0 (String.length buf))
+                Lwt_io.read_into ic buf 0 (min n (String.length buf)))
             in
             read_payload (n - written)
           else
+            let () = assert (n = 0) in
             if final then
               (* Write a zero length message *)
               lwt (_:int) = Sharedbuf.with_write buf_in (fun buf -> Lwt.return 0)
               in Lwt.return ()
-            else Lwt.return () in
+            else  (* Normally MtGox sends only final frames *)
+              Lwt.return () in
 
         lwt () = read_payload payload_len in
         read_frames ic
 
-      | _ -> raise Operation_not_supported
+      | _ ->
+        lwt msg = (Lwt_io.read ~count:payload_len ic) in
+        Printf.printf "Operation not supported: Opcode %d, message:\n%s\n%!"
+          (Opcode.to_int opcode) msg;
+        raise Operation_not_supported
   in
 
   let rec write_frames oc =
