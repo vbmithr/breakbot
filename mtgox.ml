@@ -88,8 +88,8 @@ module Protocol = struct
         {
           curr: string;
           kind: Order.kind;
-          price: int64;
-          amount: int64;
+          price: Z.t;
+          amount: Z.t;
           ts: int64
         }
 
@@ -98,8 +98,8 @@ module Protocol = struct
       {
         curr=d.LL.currency;
         kind=Order.kind_of_string d.LL.type_str;
-        price=Int64.of_string d.LL.price_int;
-        amount=Int64.of_string d.LL.total_volume_int;
+        price=Z.of_string d.LL.price_int;
+        amount=Z.of_string d.LL.total_volume_int;
         ts=Int64.of_string d.LL.now
       }
   end
@@ -127,9 +127,9 @@ module Parser = struct
                 | _ -> failwith "parse_array")
             | `Lexeme `Oe ->
               let ts = Int64.of_string (List.assoc "stamp" acc |> unstr)
-              and price = Int64.of_string
+              and price = Z.of_string
                 (List.assoc "price_int" acc |> unstr)
-              and amount = Int64.of_string
+              and amount = Z.of_string
                 (List.assoc "amount_int" acc |> unstr) in
               let books =
                 Books.add ~ts books "USD" (Order.kind_of_string ctx)

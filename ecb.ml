@@ -36,16 +36,16 @@ let make_convert rates from =
     (let rate = List.assoc curr rates in
      (fun amount -> rate *. amount))
 
-let make_convert_int64 rates from =
+let make_convert_Z rates from =
   fun curr ->
     (let rate = List.assoc curr rates in
-     fun amount -> Int64.of_float (rate *. Int64.to_float amount))
+     fun amount -> Z.of_float (rate *. Z.to_float amount))
 
 let converters =
   lwt rates = get_rates_curr "USD" in
   let currencies = List.map (fun (c,_) -> c) rates in
   let convert_froms = List.map
-    (fun c -> c, make_convert_int64 rates c) currencies in
+    (fun c -> c, make_convert_Z rates c) currencies in
   let converters_funs =
     List.map (fun (c, f) -> List.map
       (fun curr -> ((c, curr), (f  curr)))

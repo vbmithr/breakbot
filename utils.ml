@@ -16,6 +16,7 @@ module IntMap = Map.Make
     let compare = Pervasives.compare
    end)
 module Int64Map = Map.Make(Int64)
+module ZMap = Map.Make(Z)
 module StringMap = Map.Make(String)
 module StringSet = Set.Make(String)
 

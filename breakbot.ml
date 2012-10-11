@@ -41,12 +41,15 @@ let () =
                   Books.arbiter_unsafe
                     curr converters x1#get_books x1#base_curr
                     x2#get_books x2#base_curr
-                with Not_found -> (0L,0L)
+                with Not_found -> Z.((~$0,~$0),(~$0,~$0))
               in ((curr, ret)::acc)
             ) common_currs [] in
-        List.iter (fun (curr, (am1, am2)) ->
-          Printf.printf "%s -> : %f \n%!" curr (Satoshi.to_face_float am1);
-          Printf.printf "%s <- : %f \n%!" curr (Satoshi.to_face_float am2)) res in
+        List.iter (fun (curr, ((am1,sum1), (am2,sum2))) ->
+          Printf.printf "%s -> : %f (%f %s)\n%!"
+            curr (Satoshi.to_face_float am1) (Dollar.to_face_float sum1 /. 1e8) curr;
+          Printf.printf "%s <- : %f (%f %s)\n%!"
+            curr (Satoshi.to_face_float am2) (Dollar.to_face_float sum2 /. 1e8) curr)
+          res in
       let () = List.iter (fun x -> arbiter_one xch x) other_xchs in
       process ()
     in process ()
