@@ -51,6 +51,13 @@ module Book : BOOK = struct
 
   type value = Z.t * int64
 
+  let of_bindings bds =
+    List.fold_left (fun acc (k,v) -> ZMap.add k v acc) ZMap.empty bds
+
+  let min_value book =
+    let open Z in
+        ZMap.fold (fun _ v acc -> min v acc) book Z.(pow ~$2 128)
+
   let add ?(ts=Unix.getmicrotime_int64 ()) (price:Z.t) (amount:Z.t) (book:value t) =
     ZMap.add price (amount,ts) book
 
@@ -68,13 +75,34 @@ module Book : BOOK = struct
             then acc + pr*am else acc)
           book ~$0
 
+  let to_depth book = function
+    | Order.Bid ->
+      let open Z in
+          let bindings = ZMap.bindings book in
+          fst (List.fold_right (fun (pr,(am,_)) (depth, am_) ->
+            ZMap.add pr (am+am_) depth, am+am_) bindings (ZMap.empty, ~$0))
+
+    | Order.Ask ->
+      let open Z in
+          let _,bindings =
+            ZMap.fold (fun pr (am,_) (am_,bds) ->
+              (am_ + am), (pr, am_+am)::bds
+            ) book (~$0,[]) in
+          of_bindings bindings
+
+  let merge_max = ZMap.merge (fun _ v1 v2 -> match v1, v2 with
+    | Some v1, Some v2 -> Some Z.(max v1 v2)
+    | Some v1, None    -> Some v1
+    | None,    Some v2 -> Some v2
+    | None,    None    -> None)
+
   let buy_price ask_book amount =
     let open Z in
         fst (ZMap.fold (fun pr (am,_) (pr_, am_) ->
           match sign (am_ - am) with
             | 1 -> (pr_ + pr*am, am_ - am)
             | 0 -> (pr_ + pr*am, am_ - am)
-            | -1 -> (pr_ + pr*am_, ~$0)
+            | -1 -> if gt am_ ~$0 then (pr_ + pr*am_, ~$0) else (pr_,am_)
             | _ -> failwith ""
         ) ask_book (~$0, amount))
 
@@ -85,7 +113,7 @@ module Book : BOOK = struct
           match sign (am_ - am) with
             | 1 -> (pr_ + pr*am, am_ - am)
             | 0 -> (pr_ + pr*am, am_ - am)
-            | -1 -> (pr_ + pr*am_, ~$0)
+            | -1 -> if gt am_ ~$0 then (pr_ + pr*am_, ~$0) else (pr_,am_)
             | _ -> failwith ""
         ) bindings (~$0, amount))
 
@@ -104,11 +132,16 @@ module Book : BOOK = struct
   (** Gives the quantity that can be arbitraged. This function does
       not check that [bid] and [ask] are really bid resp. ask books *)
   let arbiter_unsafe bid ask =
-    let max_bid = fst (max_binding bid)
-    and min_ask = fst (min_binding ask) in
-    let qty =
-      min (amount_below_or_eq ask max_bid) (amount_above_or_eq bid min_ask) in
-    qty, buy_price ask qty
+    let open Z in
+        let max_bid = fst (max_binding bid)
+        and min_ask = fst (min_binding ask) in
+        if gt max_bid min_ask then
+          let bid_depth = to_depth bid Order.Bid
+          and ask_depth = to_depth ask Order.Ask in
+          let merged = merge_max bid_depth ask_depth in
+          let qty = min_value merged in qty, buy_price ask qty
+        else
+          Z.(~$0, ~$0)
 
   let diff book1 book2 =
     let open Z in
@@ -170,16 +203,17 @@ module BooksFunctor = struct
         try StringMap.find curr books2
         with Not_found -> convert_from_base books2 basecurr2
       in
-      let am1, sum1 = (B.arbiter_unsafe b1 a2)
-      and am2, sum2 = (B.arbiter_unsafe b2 a1) in
-      if Z.(gt am1 ~$0)
-      then
-        let sell_pr = B.sell_price b2 am1 in
-        ((am1, Z.(sell_pr - sum1)), (am2, sum2))
-      else
-        let sell_pr = B.sell_price b1 am2 in
-        ((am1, sum1), Z.(am2, sell_pr - sum2))
-
+      let qty1, pr1 = (B.arbiter_unsafe b2 a1)
+      and qty2, pr2 = (B.arbiter_unsafe b1 a2) in
+      match Z.(sign (qty1 - qty2)) with
+        | 1 ->
+          let sell_pr = B.sell_price b2 qty1 in
+          (qty1, Z.(sell_pr - pr1)), (qty2, pr2)
+        | 0 -> (qty1, pr1), (qty2, pr2)
+        | -1 ->
+          let sell_pr = B.sell_price b1 qty2 in
+          (qty1, pr1), (qty2, Z.(sell_pr - pr2))
+        | _ -> failwith ""
 
     let print books =
       let print_one book = Book.iter

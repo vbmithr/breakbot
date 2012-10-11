@@ -8,7 +8,7 @@ open Exchange
    case that processing is indeed faster than receiving+parsing *)
 
 let () =
-  Sys.catch_break true;
+  (* Sys.catch_break true; *)
   (* Most performant method*)
   (* Lwt_unix.set_default_async_method Lwt_unix.Async_switch; *)
   let config = Config.of_file "breakbot.conf" in
@@ -44,11 +44,11 @@ let () =
                 with Not_found -> Z.((~$0,~$0),(~$0,~$0))
               in ((curr, ret)::acc)
             ) common_currs [] in
-        List.iter (fun (curr, ((am1,sum1), (am2,sum2))) ->
+        List.iter (fun (curr, ((qty1,pr1), (qty2,pr2))) ->
           Printf.printf "%s -> : %f (%f %s)\n%!"
-            curr (Satoshi.to_face_float am1) (Dollar.to_face_float sum1 /. 1e8) curr;
+            curr (Satoshi.to_face_float qty1) Z.(to_float pr1 /. 1e13) curr;
           Printf.printf "%s <- : %f (%f %s)\n%!"
-            curr (Satoshi.to_face_float am2) (Dollar.to_face_float sum2 /. 1e8) curr)
+            curr (Satoshi.to_face_float qty2) Z.(to_float pr2 /. 1e13) curr)
           res in
       let () = List.iter (fun x -> arbiter_one xch x) other_xchs in
       process ()
