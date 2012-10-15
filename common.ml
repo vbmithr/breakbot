@@ -6,6 +6,7 @@ module Cent = functor (R : (sig val value: float end)) -> struct
   let of_face_float v = of_float (v *. R.value)
   let to_face_float v = to_float v /. R.value
   let of_face_string v = of_float (float_of_string v *. R.value)
+  let to_face_string v = string_of_float (to_face_float v)
 end
 
 module Satoshi = Cent (struct let value = 1e8 end)
@@ -13,11 +14,6 @@ module Dollar  = Cent (struct let value = 1e5 end)
 
 module Order = struct
   type kind = Bid | Ask
-  type strategy =
-    | Market
-    | Good_till_cancelled
-    | Immediate_or_cancel
-    | Fill_or_kill
 
   let kind_of_string str =
     let caseless = String.lowercase str in
@@ -25,6 +21,26 @@ module Order = struct
       | "bid" | "bids" -> Bid
       | "ask" | "asks" -> Ask
       | _ -> failwith "Order.kind_of_string"
+
+  type strategy =
+    | Market (* non-limit order *)
+    | Limit (* Good till canceled -- classic limit order *)
+    | Limit_IOC
+    (* Immediate or cancel : at least partially executed or immediately
+       cancelled *)
+    | Limit_FOK (* Fill or kill : fully executed or immediately canceled *)
+
+  type order =
+      {
+        exchange: string;
+        kind: kind;
+        currency: string;
+        price: Z.t;
+        amount: Z.t
+      }
+
+  (** When an exchange fails to send an order *)
+  exception Failure of order * string
 end
 
 module type BOOK = sig

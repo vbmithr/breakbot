@@ -1,4 +1,5 @@
 {
-  "mtgox": ["your-api-key-here",
-            "your-api-key-secret-here"]
+    "mtgox": ["your-api-key-here",
+              "your-api-key-secret-here"],
+    "intersango": ["your-api-key-here"]
 }

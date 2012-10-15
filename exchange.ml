@@ -20,6 +20,7 @@ object (self)
   method virtual base_curr : string
 
   method virtual update    : unit Lwt.t
-  method virtual bid       : string -> int -> int -> unit Lwt.t
-  method virtual ask       : string -> int -> int -> unit Lwt.t
+  method virtual place_order  : Order.kind -> string ->
+    Z.t -> Z.t -> unit Lwt.t
+
 end

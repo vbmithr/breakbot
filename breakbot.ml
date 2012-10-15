@@ -17,11 +17,14 @@ let () =
       (* Printf.printf "%s\n%s\n%!" key secret; *)
       Uuidm.to_bytes (Opt.unopt (Uuidm.of_string key)),
       Cohttp.Base64.decode secret
-    | _ -> failwith "Error reading config file."
+    | _ -> failwith "Syntax error in config file."
+  and intersango_key = match (List.assoc "intersango" config) with
+    | [key] -> key
+    | _ -> failwith "Syntax error in config file."
   in
   let exchanges =
-    [new Intersango.intersango;
-     new Mtgox.mtgox mtgox_key mtgox_secret] in
+    [new Intersango.intersango intersango_key;
+     (* new Mtgox.mtgox mtgox_key mtgox_secret *)] in
   let mvars = List.map (fun xch -> xch#get_mvar) exchanges in
   let process mvars =
     lwt converters = Ecb.converters in
@@ -54,9 +57,9 @@ let () =
       process ()
     in process ()
   in
-  try
-    let threads_to_run =
-      process mvars :: List.map (fun xch -> xch#update) exchanges in
-    Lwt.pick threads_to_run |> Lwt_main.run
-  with
-    | Sys.Break -> List.iter (fun xch -> xch#print) exchanges
+  (* try *)
+  let threads_to_run =
+    process mvars :: List.map (fun xch -> xch#update) exchanges in
+  Lwt.pick threads_to_run |> Lwt_main.run
+  (* with *)
+  (*   | Sys.Break -> List.iter (fun xch -> xch#print) exchanges *)

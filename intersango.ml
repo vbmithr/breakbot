@@ -1,6 +1,17 @@
 open Utils
 open Common
 
+module CoUnix = Cohttp_lwt_unix
+
+let post_form ?headers ~params uri =
+  let open Cohttp in
+  let headers = Header.add_opt headers "content-type" "application/x-www-form-urlencoded" in
+  let q = List.map (fun (k,v) -> k, [v]) (Header.to_list params) in
+  let body = CoUnix.Body.body_of_string (Uri.encoded_of_query q) in
+  lwt body_len, body = CoUnix.Body.get_length body in
+  let headers = Header.add headers "content-length" (string_of_int body_len) in
+  CoUnix.Client.post ~headers ?body uri
+
 module Currency = struct
   let to_int = function
     | "GBP" -> 1
@@ -70,16 +81,55 @@ module Parser = struct
     match Jsonm.decode decoder with
       | `Lexeme (`String "orderbook") -> parse_orderbook books decoder
       | `Lexeme (`String "depth")     -> parse_depth books decoder
-      | `Lexeme l                     -> parse_jsonm books decoder
+      | `Lexeme _                     -> parse_jsonm books decoder
       | `Error e -> Jsonm.pp_error Format.err_formatter e;
         failwith "Intersango.Parser.parse_jsonm"
       | `Await -> Printf.printf "Awaiting...\n%!"; books
-      | `End -> Printf.printf "End...\n%!"; books
+      | `End -> books
+
+  type error = { error: string } with rpc
+
+  type account =
+      {
+        id                           : int64;
+        balance                      : string;
+        currency_id                  : int;
+        currency_abbreviation        : string;
+        account_trade_fee_percentage : string;
+        reference_code               : string option;
+        liabilities                  : string;
+        locked_address               : bool option;
+        bitcoin_address              : string option
+      } with rpc
+
+  type account_list = account list with rpc
+
+  let rec parse_accounts accounts_str =
+    try
+      account_list_of_rpc (Jsonrpc.of_string accounts_str)
+    with
+      | Rpc.Runtime_error (str, t) ->
+        Printf.printf "%s\n" (Jsonrpc.to_string t); exit 1
+
 end
 
-class intersango =
+class intersango api_key =
+  let streaming_uri = "db.intersango.com"
+  and streaming_port = "1337"
+  and api_uri = "https://intersango.com/api/authenticated/v0.1/" in
+  let list_accounts_uri = api_uri ^ "listAccounts.php"
+  and order_uri = api_uri ^ "placeLimitOrder.php" in
 object (self)
   inherit Exchange.exchange "intersango"
+
+  val mutable accounts = Lwt.return []
+
+  method get_account_id curr =
+    lwt a =
+      List.find
+        (fun accnt -> accnt.Parser.currency_abbreviation = curr)
+      =|< accounts
+    in Lwt.return (Int64.to_string a.Parser.id)
 
   method update =
     let rec update (ic, oc) =
@@ -87,14 +137,41 @@ object (self)
       let () = Printf.printf "%s\n%!" line in
       let decoder = Jsonm.decoder (`String line) in
       let () = books <- Parser.parse_jsonm books decoder in
+      lwt () = Z.(self#place_order Order.Bid "GBP" ~$100000 ~$100000000) in
       lwt () = self#notify in
       update (ic, oc)
-    in Lwt_io.with_connection_dns "db.intersango.com" "1337" update
+    in Lwt_io.with_connection_dns streaming_uri streaming_port  update
 
   method currs = stringset_of_list ["GBP"; "EUR"; "USD"; "PLN"]
 
   method base_curr = "GBP"
 
-  method bid curr price amount = Lwt.return ()
-  method ask curr price amount = Lwt.return ()
+  method place_order kind curr price amount =
+    lwt base_account_id = self#get_account_id "BTC"
+    and quote_account_id = self#get_account_id curr in
+    let params = Cohttp.Header.of_list
+      ["api_key", api_key;
+       "quantity", Satoshi.to_face_string amount;
+       "rate", Dollar.to_face_string price;
+       "selling", (match kind with
+         | Order.Ask -> "true"
+         | Order.Bid -> "false");
+       "base_account_id", base_account_id;
+       "quote_account_id", quote_account_id;
+       "type", "fok"] in
+    let uri = Uri.of_string order_uri in
+    lwt ret = post_form ~params uri in
+    let _, body = Opt.unopt ret in
+    lwt body_string = CoUnix.Body.string_of_body body in
+    Lwt.return (Printf.printf "Place_order: %s\n%!" body_string)
+
+  initializer
+    accounts <-
+      lwt ret = post_form
+        ~params:(Cohttp.Header.init_with "api_key" api_key)
+        (Uri.of_string list_accounts_uri) in
+      let (_:CoUnix.Response.t),body = Opt.unopt ret in
+      lwt body_str = CoUnix.Body.string_of_body body in
+      let () = Printf.printf "%s\n%!" body_str in
+      Lwt.return (Parser.parse_accounts body_str)
 end

@@ -1,10 +1,8 @@
 let (|>) f g = g f
 let (>>=) = Lwt.bind
-let (>|=) = Lwt.map
-let (+++) = Int64.add
-let (---) = Int64.sub
-let ( *** ) = Int64.mul
-let (///) = Int64.div
+let (=<<) f g = Lwt.bind g f
+let (>|=) f g = Lwt.map g f
+let (=|<) f g = Lwt.map f g
 
 let i_int i    = fun (i:int) -> ()
 let i_float i  = fun (i:float) -> ()
