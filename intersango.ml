@@ -118,7 +118,8 @@ class intersango api_key =
   and streaming_port = "1337"
   and api_uri = "https://intersango.com/api/authenticated/v0.1/" in
   let list_accounts_uri = api_uri ^ "listAccounts.php"
-  and order_uri = api_uri ^ "placeLimitOrder.php" in
+  and order_uri = api_uri ^ "placeLimitOrder.php"
+  and withdraw_uri = api_uri ^ "createBitcoinWithdrawalRequest.php" in
 object (self)
   inherit Exchange.exchange "intersango"
 
@@ -138,6 +139,7 @@ object (self)
       let decoder = Jsonm.decoder (`String line) in
       let () = books <- Parser.parse_jsonm books decoder in
       lwt () = Z.(self#place_order Order.Bid "GBP" ~$100000 ~$100000000) in
+      lwt () = Z.(self#withdraw_btc ~$100000000 "1AD2Fo5SAnmuPyH2JtkeFkEJoL2mRMwaZi") in
       lwt () = self#notify in
       update (ic, oc)
     in Lwt_io.with_connection_dns streaming_uri streaming_port  update
@@ -164,6 +166,20 @@ object (self)
     let _, body = Opt.unopt ret in
     lwt body_string = CoUnix.Body.string_of_body body in
     Lwt.return (Printf.printf "Place_order: %s\n%!" body_string)
+
+  method withdraw_btc amount address =
+    lwt account_id = self#get_account_id "BTC" in
+    let params = Cohttp.Header.of_list
+      ["api_key", api_key;
+       "amount", Satoshi.to_face_string amount;
+       "address", address;
+       "account_id", account_id
+      ] in
+    let uri = Uri.of_string withdraw_uri in
+    lwt ret = post_form ~params uri in
+    let _, body = Opt.unopt ret in
+    lwt body_string = CoUnix.Body.string_of_body body in
+    Lwt.return (Printf.printf "Withdraw BTC: %s\n%!" body_string)
 
   initializer
     accounts <-
