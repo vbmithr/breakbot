@@ -1,3 +1,53 @@
-<*.ml>: package(zarith), package(rpc), package(rpc.syntax), package(jsonm), package(xmlm), package(lwt.syntax), syntax(camlp4o), package(lwt), package(lwt.extra), package(lwt.unix), package(yojson), package(cohttp), package(cohttp.lwt), package(cryptokit), package(uuidm), thread, annot
-<*.native>: package(zarith), package(rpc), package(rpc.syntax), package(jsonm), package(xmlm), package(lwt.syntax), syntax(camlp4o), package(lwt), package(lwt.extra), package(lwt.unix), package(yojson), package(cohttp), package(cohttp.lwt), package(cryptokit), package(uuidm), thread, annot
-<*.byte>: package(zarith), package(rpc), package(rpc.syntax), package(jsonm), package(xmlm), package(lwt.syntax), syntax(camlp4o), package(lwt), package(lwt.extra), package(lwt.unix), package(yojson), package(cohttp), package(cohttp.lwt), package(cryptokit), package(uuidm), thread, annot
+<*.ml>: syntax(camlp4o),\
+        package(bolt),\
+        package(zarith),\
+        package(rpc),\
+        package(rpc.syntax),\
+        package(jsonm),\
+        package(xmlm),\
+        package(lwt),\
+        package(lwt.extra),\
+        package(lwt.unix),\
+        package(lwt.syntax),\
+        package(yojson),\
+        package(cohttp),\
+        package(cohttp.lwt),\
+        package(cryptokit),\
+        package(uuidm),\
+        thread, annot
+
+<*.native>: syntax(camlp4o),\
+        package(bolt),\
+        package(zarith),\
+        package(rpc),\
+        package(rpc.syntax),\
+        package(jsonm),\
+        package(xmlm),\
+        package(lwt),\
+        package(lwt.extra),\
+        package(lwt.unix),\
+        package(lwt.syntax),\
+        package(yojson),\
+        package(cohttp),\
+        package(cohttp.lwt),\
+        package(cryptokit),\
+        package(uuidm),\
+        thread, annot
+
+<*.byte>: syntax(camlp4o),\
+        package(bolt),\
+        package(zarith),\
+        package(rpc),\
+        package(rpc.syntax),\
+        package(jsonm),\
+        package(xmlm),\
+        package(lwt),\
+        package(lwt.extra),\
+        package(lwt.unix),\
+        package(lwt.syntax),\
+        package(yojson),\
+        package(cohttp),\
+        package(cohttp.lwt),\
+        package(cryptokit),\
+        package(uuidm),\
+        thread, annot

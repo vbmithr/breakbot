@@ -125,7 +125,7 @@ object (self)
 
   val mutable accounts = Lwt.return []
 
-  method get_account_id curr =
+  method private get_account_id curr =
     lwt a =
       List.find
         (fun accnt -> accnt.Parser.currency_abbreviation = curr)
@@ -167,7 +167,7 @@ object (self)
     lwt body_string = CoUnix.Body.string_of_body body in
     Lwt.return (Printf.printf "Place_order: %s\n%!" body_string)
 
-  method withdraw_btc amount address =
+  method private withdraw_btc amount address =
     lwt account_id = self#get_account_id "BTC" in
     let params = Cohttp.Header.of_list
       ["api_key", api_key;

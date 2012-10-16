@@ -21,6 +21,12 @@ module StringSet = Set.Make(String)
 let stringset_of_list l =
   List.fold_left (fun acc v -> StringSet.add v acc) StringSet.empty l
 
+let with_finally f f_block =
+  try
+    let res = f () in f_block (); res
+  with e ->
+    f_block (); raise e
+
 module Opt = struct
   exception Unopt_none
 

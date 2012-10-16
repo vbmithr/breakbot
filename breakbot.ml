@@ -8,13 +8,13 @@ open Exchange
    case that processing is indeed faster than receiving+parsing *)
 
 let () =
-  (* Sys.catch_break true; *)
-  (* Most performant method*)
-  (* Lwt_unix.set_default_async_method Lwt_unix.Async_switch; *)
+  let () = Bolt.Logger.register ""
+    Bolt.Level.TRACE "all" "default" "file"
+    ("breakbot.log", {Bolt.Output.seconds_elapsed=Some (3600. *. 24.);
+                      Bolt.Output.signal_caught= Some 2}) in
   let config = Config.of_file "breakbot.conf" in
   let mtgox_key, mtgox_secret = match (List.assoc "mtgox" config) with
     | [key; secret] ->
-      (* Printf.printf "%s\n%s\n%!" key secret; *)
       Uuidm.to_bytes (Opt.unopt (Uuidm.of_string key)),
       Cohttp.Base64.decode secret
     | _ -> failwith "Syntax error in config file."
@@ -24,13 +24,14 @@ let () =
   in
   let exchanges =
     [new Intersango.intersango intersango_key;
-     (* new Mtgox.mtgox mtgox_key mtgox_secret *)] in
+     new Mtgox.mtgox mtgox_key mtgox_secret] in
   let mvars = List.map (fun xch -> xch#get_mvar) exchanges in
   let process mvars =
     lwt converters = Ecb.converters in
     let rec process () =
       lwt xch = Lwt.pick (List.map Lwt_mvar.take mvars) in
-      let () = Printf.printf "Exchange %s has just been updated!\n" xch#name in
+      let () = LOG "Exchange %s has just been updated!\n" xch#name LEVEL INFO in
+      (* let () = Printf.printf "Exchange %s has just been updated!\n" xch#name in *)
       let other_xchs = List.filter (fun x -> x != xch) exchanges in
       let arbiter_one x1 x2 =
         let () = Printf.printf "Arbitrage table for: %s <-> %s\n%!"
@@ -57,9 +58,6 @@ let () =
       process ()
     in process ()
   in
-  (* try *)
   let threads_to_run =
     process mvars :: List.map (fun xch -> xch#update) exchanges in
   Lwt.pick threads_to_run |> Lwt_main.run
-  (* with *)
-  (*   | Sys.Break -> List.iter (fun xch -> xch#print) exchanges *)

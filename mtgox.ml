@@ -230,6 +230,5 @@ object (self)
 
   method base_curr = "USD"
 
-  method bid curr price amount = Lwt.return ()
-  method ask curr price amount = Lwt.return ()
+  method place_order kind curr price amount = Lwt.return ()
 end
