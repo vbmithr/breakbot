@@ -72,16 +72,20 @@ let check_response_is_conform resp nonce64 =
   (try (match List.assoc "upgrade" hdrs with
     | "WebSocket" | "websocket" -> ()
     | str         -> raise (Response_failure (Bad_upgrade_hdr str)))
-   with Not_found -> raise (Response_failure (Bad_upgrade_hdr "")));
+   with Not_found -> raise (Response_failure (Bad_upgrade_hdr ""))
+  );
 
-  (try (match List.assoc "connection" hdrs with    | "Upgrade" | "upgrade" -> ()
+  (try (match List.assoc "connection" hdrs with
+    | "Upgrade" | "upgrade" -> ()
     | str       -> raise (Response_failure (Bad_connection_hdr str)))
-   with Not_found -> raise (Response_failure (Bad_connection_hdr "")));
+   with Not_found -> raise (Response_failure (Bad_connection_hdr ""))
+  );
 
   (try
     let str = List.assoc "sec-websocket-accept" hdrs in
     check_sec_websocket_accept str nonce64
-   with Not_found -> raise (Response_failure Bad_sec_websocket_accept));
+   with Not_found -> raise (Response_failure Bad_sec_websocket_accept)
+  );
 
   if Response.version resp <> `HTTP_1_1
   then raise (Response_failure Bad_http_version);
@@ -141,7 +145,7 @@ let with_websocket uri_string f =
           if n > 0 then
             lwt written = Sharedbuf.with_write buf_in
               (fun buf ->
-                Lwt_io.read_into ic buf 0 (min n (String.length buf)))
+                Lwt_io.read_into ic buf 0 (min n $ String.length buf))
             in
             read_payload (n - written)
           else
@@ -172,17 +176,18 @@ let with_websocket uri_string f =
       lwt () =
         (match len with
           | n when n < 126 ->
-            Lwt_io.write_char oc (Char.chr (128+n))
+            128+n |> Char.chr |>  Lwt_io.write_char oc
           | n when n < (1 lsl 16) ->
             lwt () = Lwt_io.write_char oc '\254' in
             Lwt_io.BE.write_int16 oc n
           | n ->
             lwt () = Lwt_io.write_char oc '\255' in
-            Lwt_io.BE.write_int64 oc (Int64.of_int n)) in
+            Lwt_io.BE.write_int64 oc $ Int64.of_int n
+        ) in
       lwt () = Lwt_io.write_from_exactly oc mask 0 4 in
       let () = for i = 0 to len - 1 do (* masking msg to send *)
-          buf.[i] <- Char.chr
-            ((Char.code mask.[i mod 4]) lxor (Char.code buf.[i]))
+          buf.[i] <- Char.chr $
+            Char.code mask.[i mod 4] lxor Char.code buf.[i]
         done in
       lwt () = Lwt_io.write_from_exactly oc buf 0 len in
       lwt () = Lwt_io.flush oc in

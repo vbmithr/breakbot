@@ -1,5 +1,5 @@
-let (|>) f g   = g f
-let ($) f g    = f g (* right associative composition operator *)
+external (|>) : 'a -> ('a -> 'b) -> 'b = "%revapply";;
+external ($) : ('a -> 'b) -> 'a -> 'b = "%apply"
 let (|)        = (lor)
 let (&)        = (land)
 
@@ -124,12 +124,12 @@ module String = struct
   module LE = struct
     let of_int32 int32 =
       let open Int32 in
-      let str = String.create 4 in
-      str.[3] <- Char.chr $ (to_int $ int32 lsr 24) land Uint8.max;
-      str.[2] <- Char.chr $ (to_int $ int32 lsr 16) land Uint8.max;
-      str.[1] <- Char.chr $ (to_int $ int32 lsr 8) land Uint8.max;
-      str.[0] <- Char.chr $ to_int int32 land Uint8.max;
-      str
+          let str = String.create 4 in
+          str.[3] <- Char.chr $ (to_int $ int32 lsr 24) land Uint8.max;
+          str.[2] <- Char.chr $ (to_int $ int32 lsr 16) land Uint8.max;
+          str.[1] <- Char.chr $ (to_int $ int32 lsr 8) land Uint8.max;
+          str.[0] <- Char.chr $ to_int int32 land Uint8.max;
+          str
 
     let read_int16 buf off =
       Char.code buf.[off+1] lsl 8 land Char.code buf.[off]
