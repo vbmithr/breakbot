@@ -1,4 +1,5 @@
 open Utils
+open Lwt_utils
 open Common
 
 module CoUnix = Cohttp_lwt_unix
@@ -138,8 +139,6 @@ object (self)
       let () = Printf.printf "%s\n%!" line in
       let decoder = Jsonm.decoder (`String line) in
       let () = books <- Parser.parse_jsonm books decoder in
-      lwt () = Z.(self#place_order Order.Bid "GBP" ~$100000 ~$100000000) in
-      lwt () = Z.(self#withdraw_btc ~$100000000 "1AD2Fo5SAnmuPyH2JtkeFkEJoL2mRMwaZi") in
       lwt () = self#notify in
       update (ic, oc)
     in Lwt_io.with_connection_dns streaming_uri streaming_port  update

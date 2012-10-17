@@ -1,5 +1,7 @@
 open Utils
 
+module ZMap = Map.Make(Z)
+
 module Cent = functor (R : (sig val value: float end)) -> struct
   include Z
 

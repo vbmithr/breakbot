@@ -8,10 +8,6 @@ open Exchange
    case that processing is indeed faster than receiving+parsing *)
 
 let () =
-  let () = Bolt.Logger.register ""
-    Bolt.Level.TRACE "all" "default" "file"
-    ("breakbot.log", {Bolt.Output.seconds_elapsed=Some (3600. *. 24.);
-                      Bolt.Output.signal_caught= Some 2}) in
   let config = Config.of_file "breakbot.conf" in
   let mtgox_key, mtgox_secret = match (List.assoc "mtgox" config) with
     | [key; secret] ->
@@ -30,8 +26,7 @@ let () =
     lwt converters = Ecb.converters in
     let rec process () =
       lwt xch = Lwt.pick (List.map Lwt_mvar.take mvars) in
-      let () = LOG "Exchange %s has just been updated!\n" xch#name LEVEL INFO in
-      (* let () = Printf.printf "Exchange %s has just been updated!\n" xch#name in *)
+      let () = Printf.printf "Exchange %s has just been updated!\n" xch#name in
       let other_xchs = List.filter (fun x -> x != xch) exchanges in
       let arbiter_one x1 x2 =
         let () = Printf.printf "Arbitrage table for: %s <-> %s\n%!"

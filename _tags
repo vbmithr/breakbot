@@ -1,14 +1,13 @@
 <*.ml>: syntax(camlp4o),\
-        package(bolt),\
+        package(lwt.syntax),\
+        package(rpc.syntax),\
         package(zarith),\
         package(rpc),\
-        package(rpc.syntax),\
         package(jsonm),\
         package(xmlm),\
         package(lwt),\
         package(lwt.extra),\
         package(lwt.unix),\
-        package(lwt.syntax),\
         package(yojson),\
         package(cohttp),\
         package(cohttp.lwt),\
@@ -17,16 +16,15 @@
         thread, annot
 
 <*.native>: syntax(camlp4o),\
-        package(bolt),\
+        package(lwt.syntax),\
+        package(rpc.syntax),\
         package(zarith),\
         package(rpc),\
-        package(rpc.syntax),\
         package(jsonm),\
         package(xmlm),\
         package(lwt),\
         package(lwt.extra),\
         package(lwt.unix),\
-        package(lwt.syntax),\
         package(yojson),\
         package(cohttp),\
         package(cohttp.lwt),\
@@ -35,16 +33,15 @@
         thread, annot
 
 <*.byte>: syntax(camlp4o),\
-        package(bolt),\
+        package(lwt.syntax),\
+        package(rpc.syntax),\
         package(zarith),\
         package(rpc),\
-        package(rpc.syntax),\
         package(jsonm),\
         package(xmlm),\
         package(lwt),\
         package(lwt.extra),\
         package(lwt.unix),\
-        package(lwt.syntax),\
         package(yojson),\
         package(cohttp),\
         package(cohttp.lwt),\
