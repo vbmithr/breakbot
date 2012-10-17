@@ -46,28 +46,28 @@ module Order = struct
 end
 
 module type BOOK = sig
-  include Map.S with type key = Z.t
+  include Map.S with type key = Dollar.t
 
-  type value = Z.t * int64
+  type value = Satoshi.t * int64
 
-  val add : ?ts:int64 -> Z.t -> Z.t -> value t -> value t
-  val update : ?ts:int64 -> Z.t -> Z.t -> value t -> value t
+  val add : ?ts:int64 -> Dollar.t -> Satoshi.t -> value t -> value t
+  val update : ?ts:int64 -> Dollar.t -> Satoshi.t -> value t -> value t
 
-  val sum : ?min_v:Z.t -> ?max_v:Z.t -> value t -> Z.t
-  val buy_price : value t -> Z.t -> Z.t
-  val sell_price : value t -> Z.t -> Z.t
+  val sum : ?min_v:Dollar.t -> ?max_v:Dollar.t -> value t -> Z.t
+  val buy_price : value t -> Satoshi.t -> Dollar.t
+  val sell_price : value t -> Satoshi.t -> Dollar.t
 
-  val amount_below_or_eq : value t -> Z.t -> Z.t
-  val amount_above_or_eq : value t -> Z.t -> Z.t
+  val amount_below_or_eq : value t -> Dollar.t -> Satoshi.t
+  val amount_above_or_eq : value t -> Dollar.t -> Satoshi.t
 
-  val arbiter_unsafe : value t -> value t -> Z.t * Z.t
+  val arbiter_unsafe : value t -> value t -> Satoshi.t * Dollar.t
 end
 
 (** A book represent the depth for one currency, and one order kind *)
 module Book : BOOK = struct
   include ZMap
 
-  type value = Z.t * int64
+  type value = Satoshi.t * int64
 
   let of_bindings bds =
     List.fold_left (fun acc (k,v) -> ZMap.add k v acc) ZMap.empty bds
@@ -179,7 +179,6 @@ module Book : BOOK = struct
           | Some (v1,ts1), Some (v2,ts2) -> Some ((v1 + v2), (max ts1 ts2)) in
         ZMap.merge merge_fun book patch
 end
-
 
 module BooksFunctor = struct
   module Make (B : BOOK) = struct

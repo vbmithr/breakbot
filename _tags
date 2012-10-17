@@ -1,38 +1,5 @@
-<*.ml>: syntax(camlp4o),\
-        package(lwt.syntax),\
-        package(rpc.syntax),\
-        package(zarith),\
-        package(rpc),\
-        package(jsonm),\
-        package(xmlm),\
-        package(lwt),\
-        package(lwt.extra),\
-        package(lwt.unix),\
-        package(yojson),\
-        package(cohttp),\
-        package(cohttp.lwt),\
-        package(cryptokit),\
-        package(uuidm),\
-        thread, annot
-
-<*.native>: syntax(camlp4o),\
-        package(lwt.syntax),\
-        package(rpc.syntax),\
-        package(zarith),\
-        package(rpc),\
-        package(jsonm),\
-        package(xmlm),\
-        package(lwt),\
-        package(lwt.extra),\
-        package(lwt.unix),\
-        package(yojson),\
-        package(cohttp),\
-        package(cohttp.lwt),\
-        package(cryptokit),\
-        package(uuidm),\
-        thread, annot
-
-<*.byte>: syntax(camlp4o),\
+<**/*.{ml,native,byte}>: syntax(camlp4o),\
+        package(cmdliner),\
         package(lwt.syntax),\
         package(rpc.syntax),\
         package(zarith),\

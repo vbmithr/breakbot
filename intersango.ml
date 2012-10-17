@@ -111,7 +111,6 @@ module Parser = struct
     with
       | Rpc.Runtime_error (str, t) ->
         Printf.printf "%s\n" (Jsonrpc.to_string t); exit 1
-
 end
 
 class intersango api_key =
@@ -125,13 +124,6 @@ object (self)
   inherit Exchange.exchange "intersango"
 
   val mutable accounts = Lwt.return []
-
-  method private get_account_id curr =
-    lwt a =
-      List.find
-        (fun accnt -> accnt.Parser.currency_abbreviation = curr)
-      =|< accounts
-    in Lwt.return (Int64.to_string a.Parser.id)
 
   method update =
     let rec update (ic, oc) =
@@ -166,7 +158,14 @@ object (self)
     lwt body_string = CoUnix.Body.string_of_body body in
     Lwt.return (Printf.printf "Place_order: %s\n%!" body_string)
 
-  method private withdraw_btc amount address =
+  method private get_account_id curr =
+    lwt a =
+      List.find
+        (fun accnt -> accnt.Parser.currency_abbreviation = curr)
+      =|< accounts
+    in Lwt.return (Int64.to_string a.Parser.id)
+
+  method withdraw_btc amount address =
     lwt account_id = self#get_account_id "BTC" in
     let params = Cohttp.Header.of_list
       ["api_key", api_key;
@@ -179,6 +178,10 @@ object (self)
     let _, body = Opt.unopt ret in
     lwt body_string = CoUnix.Body.string_of_body body in
     Lwt.return (Printf.printf "Withdraw BTC: %s\n%!" body_string)
+
+  method get_balances =
+    accounts >|= List.map (fun ac ->
+      Parser.(ac.currency_abbreviation, Satoshi.of_face_string ac.balance))
 
   initializer
     accounts <-

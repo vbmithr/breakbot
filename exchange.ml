@@ -20,7 +20,7 @@ object (self)
   method virtual base_curr : string
 
   method virtual update    : unit Lwt.t
-  method virtual place_order  : Order.kind -> string ->
-    Z.t -> Z.t -> unit Lwt.t
-
+  method virtual place_order : Order.kind -> string -> Z.t -> Z.t -> unit Lwt.t
+  method virtual withdraw_btc : Satoshi.t -> string -> unit Lwt.t
+  method virtual get_balances : ((string * Z.t) list) Lwt.t
 end

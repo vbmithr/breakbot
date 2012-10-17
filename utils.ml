@@ -1,5 +1,5 @@
-external (|>) : 'a -> ('a -> 'b) -> 'b = "%revapply";;
-external ($) : ('a -> 'b) -> 'a -> 'b = "%apply"
+external (|>) : 'a -> ('a -> 'b) -> 'b = "%revapply"
+external ($)  : ('a -> 'b) -> 'a -> 'b = "%apply"
 let (|)        = (lor)
 let (&)        = (land)
 

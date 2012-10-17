@@ -19,8 +19,8 @@ let () =
     | _ -> failwith "Syntax error in config file."
   in
   let exchanges =
-    [new Intersango.intersango intersango_key;
-     new Mtgox.mtgox mtgox_key mtgox_secret] in
+    [(new Intersango.intersango intersango_key :> Exchange.exchange);
+     (new Mtgox.mtgox mtgox_key mtgox_secret :> Exchange.exchange)] in
   let mvars = List.map (fun xch -> xch#get_mvar) exchanges in
   let process mvars =
     lwt converters = Ecb.converters in
