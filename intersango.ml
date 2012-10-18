@@ -1,17 +1,8 @@
 open Utils
 open Lwt_utils
+open Cohttp_utils
 open Common
 
-module CoUnix = Cohttp_lwt_unix
-
-let post_form ?headers ~params uri =
-  let open Cohttp in
-  let headers = Header.add_opt headers "content-type" "application/x-www-form-urlencoded" in
-  let q = List.map (fun (k,v) -> k, [v]) (Header.to_list params) in
-  let body = CoUnix.Body.body_of_string (Uri.encoded_of_query q) in
-  lwt body_len, body = CoUnix.Body.get_length body in
-  let headers = Header.add headers "content-length" (string_of_int body_len) in
-  CoUnix.Client.post ~headers ?body uri
 
 module Currency = struct
   let to_int = function
@@ -41,9 +32,9 @@ module Parser = struct
           let curr = Currency.of_int (int_of_string s)
           in parse_orderbook ?kind ?price ~curr books
         | `Lexeme (`Name s) when String.is_float s ->
-          let price = Satoshi.of_face_string s in
+          let price = S.of_face_string s in
           let amount = match Jsonm.decode decoder with
-            | `Lexeme (`String am) -> Satoshi.of_face_string am
+            | `Lexeme (`String am) -> S.of_face_string am
             | _ -> failwith "Intersango probably changed its format" in
           let kind = Opt.unopt kind in
           let curr = Opt.unopt curr in
@@ -67,8 +58,8 @@ module Parser = struct
           let kind = Order.kind_of_string (List.assoc "type" acc) in
           let curr = Currency.of_int
             (int_of_string ((List.assoc "currency_pair_id" acc))) in
-          let price = Satoshi.of_face_string (List.assoc "rate" acc) in
-          let amount = Satoshi.of_face_string (List.assoc "amount" acc) in
+          let price = S.of_face_string (List.assoc "rate" acc) in
+          let amount = S.of_face_string (List.assoc "amount" acc) in
           Books.update books curr kind price amount
         | `Lexeme _ -> parse_depth acc
         | `Error e -> Jsonm.pp_error Format.err_formatter e;
@@ -144,8 +135,8 @@ object (self)
     and quote_account_id = self#get_account_id curr in
     let params = Cohttp.Header.of_list
       ["api_key", api_key;
-       "quantity", Satoshi.to_face_string amount;
-       "rate", Satoshi.to_face_string price;
+       "quantity", S.to_face_string amount;
+       "rate", S.to_face_string price;
        "selling", (match kind with
          | Order.Ask -> "true"
          | Order.Bid -> "false");
@@ -169,7 +160,7 @@ object (self)
     lwt account_id = self#get_account_id "BTC" in
     let params = Cohttp.Header.of_list
       ["api_key", api_key;
-       "amount", Satoshi.to_face_string amount;
+       "amount", S.to_face_string amount;
        "address", address;
        "account_id", account_id
       ] in
@@ -181,7 +172,7 @@ object (self)
 
   method get_balances =
     accounts >|= List.map (fun ac ->
-      Parser.(ac.currency_abbreviation, Satoshi.of_face_string ac.balance))
+      Parser.(ac.currency_abbreviation, S.of_face_string ac.balance))
 
   initializer
     accounts <-
@@ -190,6 +181,5 @@ object (self)
         (Uri.of_string list_accounts_uri) in
       let (_:CoUnix.Response.t),body = Opt.unopt ret in
       lwt body_str = CoUnix.Body.string_of_body body in
-      let () = Printf.printf "%s\n%!" body_str in
       Lwt.return (Parser.parse_accounts body_str)
 end

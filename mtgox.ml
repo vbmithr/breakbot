@@ -1,6 +1,6 @@
 open Utils
 open Common
-open Yojson.Safe
+open Cohttp_utils
 
 module CK = Cryptokit
 
@@ -29,34 +29,94 @@ module Protocol = struct
     | MtgoxSubscribe
 
   let subscribe channel =
-    `Assoc ["op", `String "subscribe"; "channel",
-            `String (string_of_channel channel)]
+    ["op", "subscribe"; "channel", string_of_channel channel]
 
   let unsubscribe channel =
-    `Assoc ["op", `String "unsubscribe"; "channel",
-            `String (string_of_channel channel)]
+    ["op", "unsubscribe"; "channel", string_of_channel channel]
+
+  type message = (string * string) list with rpc
+  type query   = (string * string) list with rpc
+
+  type currency_info =
+      {
+        currency: string;
+        display: string;
+        display_short: string;
+        value: string;
+        value_int: string
+      } with rpc
+
+  let pair_of_currency_info ci =
+    (ci.currency, S.(of_string ci.value_int * ~$1000))
+
+  type wallet =
+      {
+        balance: currency_info;
+        max_withdraw: currency_info;
+        daily_withdraw_limit: currency_info;
+        monthly_withdraw_limit: currency_info;
+        open_orders: currency_info;
+        operations: int
+      } with rpc
+          ("balance" -> "Balance",
+           "daily_withdraw_limit" -> "Daily_Withdraw_Limit",
+           "max_withdraw" -> "Max_Withdraw",
+           "monthly_withdraw_limit" -> "Monthly_Withdraw_Limit",
+           "open_orders" -> "Open_Orders",
+           "operations" -> "Operations")
+
+  let pair_of_wallet wa =
+    pair_of_currency_info wa.balance
+
+  type wallets = (string * wallet) list with rpc
+
+  type private_info =
+      {
+        created: string;
+        id: string;
+        index: string;
+        language: string;
+        last_login: string;
+        login: string;
+        monthly_volume: currency_info;
+        rights: string list;
+        trade_fee: float;
+        wallets: wallets
+      } with rpc
+          ("created" -> "Created",
+           "id" -> "Id",
+           "index" -> "Index",
+           "language" -> "Language",
+           "last_login" -> "Last_Login",
+           "login" -> "Login",
+           "monthly_volume" -> "Monthly_Volume",
+           "rights" -> "Rights",
+           "trade_fee" -> "Trade_Fee",
+           "wallets" -> "Wallets")
+
+  type result_pi = {result: string; return: private_info} with rpc
+
+  let get_private_info rpc =
+    let res = result_pi_of_rpc rpc in res.return
+
+  let pairs_of_private_info pi =
+    List.map (fun (_,w) -> pair_of_wallet w) pi.wallets
+
+  type result_type =
+    [ `Async | `Private_info of private_info ]
 
   let query ?(optfields=[]) endpoint =
     let nonce = Unix.getmicrotime_str () in
     let id = Digest.to_hex (Digest.string nonce) in
-    let assoc =
-      ["id", `String id; "nonce", `String nonce; "call", `String endpoint] in
-    match optfields with
-      | [] -> `Assoc assoc
-      | l  -> `Assoc (assoc @ l)
+    ["id", id; "nonce", nonce; "call", endpoint] @ optfields
 
   let get_depth = query
-    ~optfields:["item", `String "BTC"; "currency", `String "USD"] "depth"
+    ~optfields:["item", "BTC"; "currency", "USD"] "depth"
 
   let get_ticker = query
-    ~optfields:["item", `String "BTC"; "currency", `String "USD"] "ticker"
+    ~optfields:["item", "BTC"; "currency", "USD"] "ticker"
 
-  let get_currency_info = query
-    ~optfields:["params", `Assoc ["currency", `String "USD"]] "currency"
-
-  let json_id_of_query = function
-    | `Assoc l -> List.assoc "id" l
-    | _ -> failwith "id_of_query"
+  let json_id_of_query = List.assoc "id"
 
   module LL = struct
     type depth =
@@ -171,20 +231,16 @@ class mtgox key secret =
 object (self)
   inherit Exchange.exchange "mtgox"
 
-  val mutable buf_in = Sharedbuf.empty ~bufsize:0 ()
-  val mutable buf_out = Sharedbuf.empty ~bufsize:0 ()
+  val mutable buf_in    = Sharedbuf.empty ~bufsize:0 ()
+  val mutable buf_out   = Sharedbuf.empty ~bufsize:0 ()
 
-  val key     = key
-  val cmd_buf = Bi_outbuf.create 4096
-
-  method private set_buf_in b  = buf_in <- b
-  method private set_buf_out b = buf_out <- b
+  val key               = key
+  val buf_json_in       = Buffer.create 4096
 
   method update =
-    let buf_json_in = Buffer.create 4096 in
-    let rec update (buf_in, buf_out) =
-      self#set_buf_in buf_in;
-      self#set_buf_out buf_out;
+    let rec update (bi, bo) =
+      buf_in    <- bi;
+      buf_out   <- bo;
 
       let rec main_loop () =
         lwt (_:int) = Sharedbuf.with_read buf_in (fun buf len ->
@@ -196,33 +252,61 @@ object (self)
                 let () = Printf.printf "%s\n%!" buf_str in
                 lwt new_books = Parser.parse books buf_str in
                 let () = books <- new_books in
-                let () = Buffer.clear buf_json_in in (* maybe use reset here ?*)
+                let () = Buffer.clear buf_json_in in (* maybe use reset here ? *)
                 self#notify)
           in Lwt.return len)
         in
         main_loop () in
 
       lwt () = Sharedbuf.write_lines buf_out
-        [(Yojson.Safe.to_string (unsubscribe Ticker));
-         (Yojson.Safe.to_string (unsubscribe Trade))] in
-      lwt (_:int) = self#command (Protocol.query "private/info") in
+        [unsubscribe Ticker |> rpc_of_message |> Jsonrpc.to_string;
+         unsubscribe Trade |> rpc_of_message |> Jsonrpc.to_string] in
+      lwt _ = self#command (Protocol.query "private/info") in
       (* lwt (_:int) = self#command (Protocol.get_depth) in *)
       (* lwt (_:int) = self#command (Protocol.get_currency_info) in *)
 
       main_loop () in
     Websocket.with_websocket "http://websocket.mtgox.com/mtgox" update
 
-  method private command (query:json) =
-    let query_json = Yojson.Safe.to_string ~buf:cmd_buf query in
+  method private command ?(async=true) query =
+    let query_json = Jsonrpc.to_string $ rpc_of_query query in
     let signed_query = CK.hash_string (CK.MAC.hmac_sha512 secret) query_json in
     let signed_request64 = Cohttp.Base64.encode
       (key ^ signed_query ^ query_json) in
-    let res = Yojson.Safe.to_string ~buf:cmd_buf
-      (`Assoc ["op", `String "call";
-               "context", `String "mtgox.com";
-               "id", json_id_of_query query;
-               "call", `String signed_request64]) in
-    Sharedbuf.write_line buf_out res
+    if async then
+      let res = Jsonrpc.to_string $ rpc_of_message
+        ["op", "call";
+         "context", "mtgox.com";
+         "id", json_id_of_query query;
+         "call", signed_request64] in
+      lwt (_:int) = Sharedbuf.write_line buf_out res in
+      Lwt.return `Async
+    else
+      let nonce = Unix.getmicrotime_str () in
+      let params = Cohttp.Header.of_list ["nonce", nonce] in
+      let headers = Cohttp.Header.of_list
+        ["User-Agent", "GoxCLI";
+         "Rest-Key", Uuidm.to_string $ Opt.unopt (Uuidm.of_bytes key);
+         "Rest-Sign", Cohttp.Base64.encode $
+           CK.hash_string (CK.MAC.hmac_sha512 secret)
+           (Uri.encoded_of_query ["nonce", [nonce]])
+        ] in
+      let endpoint = Uri.of_string $
+        "https://mtgox.com/api/1/" ^
+        (try
+           let item = List.assoc "item" query
+           and currency = List.assoc "currency" query in
+           item ^ currency
+         with Not_found -> "generic")
+        ^ "/" ^ (List.assoc "call" query) in
+      lwt ret = post_form ~headers ~params endpoint in
+      let _, body = Opt.unopt ret in
+      lwt body_string = CoUnix.Body.string_of_body body in
+      let () = Printf.printf "%s\n%!" body_string in
+      let () = Printf.printf "%s\n%!"
+        (Rpc.to_string $ Jsonrpc.of_string body_string) in
+      Lwt.return $ `Private_info
+        (get_private_info $ Jsonrpc.of_string body_string)
 
   method currs = stringset_of_list
     ["USD"; "AUD"; "CAD"; "CHF"; "CNY"; "DKK"; "EUR"; "GBP";
@@ -232,5 +316,9 @@ object (self)
 
   method place_order kind curr price amount = Lwt.return ()
   method withdraw_btc amount address = Lwt.return ()
-  method get_balances = Lwt.return []
+  method get_balances =
+    lwt res = self#command ~async:false (Protocol.query "private/info") in
+    match res with
+      | `Private_info pi -> Lwt.return $ pairs_of_private_info pi
+      | _ -> failwith "get_balances"
 end

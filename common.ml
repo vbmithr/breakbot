@@ -11,7 +11,7 @@ module Cent = functor (R : (sig val value: float end)) -> struct
   let to_face_string v = string_of_float (to_face_float v)
 end
 
-module Satoshi = Cent (struct let value = 1e8 end)
+module S = Cent (struct let value = 1e8 end)
 
 module Order = struct
   type kind = Bid | Ask
@@ -45,28 +45,28 @@ module Order = struct
 end
 
 module type BOOK = sig
-  include Map.S with type key = Satoshi.t
+  include Map.S with type key = S.t
 
-  type value = Satoshi.t * int64
+  type value = S.t * int64
 
-  val add : ?ts:int64 -> Satoshi.t -> Satoshi.t -> value t -> value t
-  val update : ?ts:int64 -> Satoshi.t -> Satoshi.t -> value t -> value t
+  val add : ?ts:int64 -> S.t -> S.t -> value t -> value t
+  val update : ?ts:int64 -> S.t -> S.t -> value t -> value t
 
-  val sum : ?min_v:Satoshi.t -> ?max_v:Satoshi.t -> value t -> Z.t
-  val buy_price : value t -> Satoshi.t -> Satoshi.t
-  val sell_price : value t -> Satoshi.t -> Satoshi.t
+  val sum : ?min_v:S.t -> ?max_v:S.t -> value t -> Z.t
+  val buy_price : value t -> S.t -> S.t
+  val sell_price : value t -> S.t -> S.t
 
-  val amount_below_or_eq : value t -> Satoshi.t -> Satoshi.t
-  val amount_above_or_eq : value t -> Satoshi.t -> Satoshi.t
+  val amount_below_or_eq : value t -> S.t -> S.t
+  val amount_above_or_eq : value t -> S.t -> S.t
 
-  val arbiter_unsafe : value t -> value t -> Satoshi.t * Satoshi.t
+  val arbiter_unsafe : value t -> value t -> S.t * S.t
 end
 
 (** A book represent the depth for one currency, and one order kind *)
 module Book : BOOK = struct
   include ZMap
 
-  type value = Satoshi.t * int64
+  type value = S.t * int64
 
   let of_bindings bds =
     List.fold_left (fun acc (k,v) -> ZMap.add k v acc) ZMap.empty bds
@@ -234,8 +234,8 @@ module BooksFunctor = struct
     let print books =
       let print_one book = Book.iter
         (fun price (amount,ts) -> Printf.printf "(%f,%f) "
-          (Satoshi.to_face_float price)
-          (Satoshi.to_face_float amount)) book in
+          (S.to_face_float price)
+          (S.to_face_float amount)) book in
       StringMap.iter (fun curr (bid,ask) ->
         Printf.printf "BID %s\n" curr;
         print_one bid; print_endline "";

@@ -16,10 +16,10 @@ let mtgox = new Mtgox.mtgox mtgox_key mtgox_secret
 let intersango = new Intersango.intersango intersango_key
 
 let print_balances =
-  lwt () = Lwt_unix.sleep 3.0 in
-  lwt balances = intersango#get_balances in
+  lwt () = Lwt_unix.sleep 0.5 in
+  lwt balances = mtgox#get_balances in
   let () = List.iter (fun (c, b) ->
-    Printf.printf "%s: %f\n%!" c (Satoshi.to_face_float b)) balances
+    Printf.printf "%s: %f\n%!" c (S.to_face_float b)) balances
   in Lwt.return ()
 
 let () =
