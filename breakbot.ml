@@ -45,9 +45,9 @@ let () =
             ) common_currs [] in
         List.iter (fun (curr, ((qty1,pr1), (qty2,pr2))) ->
           Printf.printf "%s -> : %f (%f %s)\n%!"
-            curr (Satoshi.to_face_float qty1) Z.(to_float pr1 /. 1e13) curr;
+            curr (Satoshi.to_face_float qty1) (Z.to_float pr1 /. 1e16) curr;
           Printf.printf "%s <- : %f (%f %s)\n%!"
-            curr (Satoshi.to_face_float qty2) Z.(to_float pr2 /. 1e13) curr)
+            curr (Satoshi.to_face_float qty2) (Z.to_float pr2 /. 1e16) curr)
           res in
       let () = List.iter (fun x -> arbiter_one xch x) other_xchs in
       process ()

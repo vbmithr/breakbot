@@ -41,7 +41,7 @@ module Parser = struct
           let curr = Currency.of_int (int_of_string s)
           in parse_orderbook ?kind ?price ~curr books
         | `Lexeme (`Name s) when String.is_float s ->
-          let price = Dollar.of_face_string s in
+          let price = Satoshi.of_face_string s in
           let amount = match Jsonm.decode decoder with
             | `Lexeme (`String am) -> Satoshi.of_face_string am
             | _ -> failwith "Intersango probably changed its format" in
@@ -67,7 +67,7 @@ module Parser = struct
           let kind = Order.kind_of_string (List.assoc "type" acc) in
           let curr = Currency.of_int
             (int_of_string ((List.assoc "currency_pair_id" acc))) in
-          let price = Dollar.of_face_string (List.assoc "rate" acc) in
+          let price = Satoshi.of_face_string (List.assoc "rate" acc) in
           let amount = Satoshi.of_face_string (List.assoc "amount" acc) in
           Books.update books curr kind price amount
         | `Lexeme _ -> parse_depth acc
@@ -145,7 +145,7 @@ object (self)
     let params = Cohttp.Header.of_list
       ["api_key", api_key;
        "quantity", Satoshi.to_face_string amount;
-       "rate", Dollar.to_face_string price;
+       "rate", Satoshi.to_face_string price;
        "selling", (match kind with
          | Order.Ask -> "true"
          | Order.Bid -> "false");

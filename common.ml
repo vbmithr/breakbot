@@ -12,7 +12,6 @@ module Cent = functor (R : (sig val value: float end)) -> struct
 end
 
 module Satoshi = Cent (struct let value = 1e8 end)
-module Dollar  = Cent (struct let value = 1e5 end)
 
 module Order = struct
   type kind = Bid | Ask
@@ -46,21 +45,21 @@ module Order = struct
 end
 
 module type BOOK = sig
-  include Map.S with type key = Dollar.t
+  include Map.S with type key = Satoshi.t
 
   type value = Satoshi.t * int64
 
-  val add : ?ts:int64 -> Dollar.t -> Satoshi.t -> value t -> value t
-  val update : ?ts:int64 -> Dollar.t -> Satoshi.t -> value t -> value t
+  val add : ?ts:int64 -> Satoshi.t -> Satoshi.t -> value t -> value t
+  val update : ?ts:int64 -> Satoshi.t -> Satoshi.t -> value t -> value t
 
-  val sum : ?min_v:Dollar.t -> ?max_v:Dollar.t -> value t -> Z.t
-  val buy_price : value t -> Satoshi.t -> Dollar.t
-  val sell_price : value t -> Satoshi.t -> Dollar.t
+  val sum : ?min_v:Satoshi.t -> ?max_v:Satoshi.t -> value t -> Z.t
+  val buy_price : value t -> Satoshi.t -> Satoshi.t
+  val sell_price : value t -> Satoshi.t -> Satoshi.t
 
-  val amount_below_or_eq : value t -> Dollar.t -> Satoshi.t
-  val amount_above_or_eq : value t -> Dollar.t -> Satoshi.t
+  val amount_below_or_eq : value t -> Satoshi.t -> Satoshi.t
+  val amount_above_or_eq : value t -> Satoshi.t -> Satoshi.t
 
-  val arbiter_unsafe : value t -> value t -> Satoshi.t * Dollar.t
+  val arbiter_unsafe : value t -> value t -> Satoshi.t * Satoshi.t
 end
 
 (** A book represent the depth for one currency, and one order kind *)
@@ -235,7 +234,7 @@ module BooksFunctor = struct
     let print books =
       let print_one book = Book.iter
         (fun price (amount,ts) -> Printf.printf "(%f,%f) "
-          (Dollar.to_face_float price)
+          (Satoshi.to_face_float price)
           (Satoshi.to_face_float amount)) book in
       StringMap.iter (fun curr (bid,ask) ->
         Printf.printf "BID %s\n" curr;
