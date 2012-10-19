@@ -1,8 +1,8 @@
 open Utils
 open Lwt_utils
-open Cohttp_utils
 open Common
 
+module CoUnix = Cohttp_lwt_unix
 
 module Currency = struct
   let to_int = function
@@ -144,7 +144,7 @@ object (self)
        "quote_account_id", quote_account_id;
        "type", "fok"] in
     let uri = Uri.of_string order_uri in
-    lwt ret = post_form ~params uri in
+    lwt ret = CoUnix.Client.post_form ~params uri in
     let _, body = Opt.unopt ret in
     lwt body_string = CoUnix.Body.string_of_body body in
     Lwt.return (Printf.printf "Place_order: %s\n%!" body_string)
@@ -165,7 +165,7 @@ object (self)
        "account_id", account_id
       ] in
     let uri = Uri.of_string withdraw_uri in
-    lwt ret = post_form ~params uri in
+    lwt ret = CoUnix.Client.post_form ~params uri in
     let _, body = Opt.unopt ret in
     lwt body_string = CoUnix.Body.string_of_body body in
     Lwt.return (Printf.printf "Withdraw BTC: %s\n%!" body_string)
@@ -176,7 +176,7 @@ object (self)
 
   initializer
     accounts <-
-      lwt ret = post_form
+      lwt ret = CoUnix.Client.post_form
         ~params:(Cohttp.Header.init_with "api_key" api_key)
         (Uri.of_string list_accounts_uri) in
       let (_:CoUnix.Response.t),body = Opt.unopt ret in

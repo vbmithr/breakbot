@@ -9,14 +9,12 @@ byte:      $(TARGETS:.ml=.byte)
 debug:     $(TARGETS:.ml=.d.byte)
 profiling: $(TARGETS:.ml=.p.native)
 
-cli.[nbdp]*: _tags cli.ml mtgox.ml intersango.ml
-breakbot.[nbdp]*: _tags breakbot.ml mtgox.ml intersango.ml ecb.ml
+cli.[nbdp]*: alldeps
+breakbot.[nbdp]*: alldeps
 
-mtgox.ml: sharedbuf.ml websocket.ml common.ml cohttp_utils.ml\
-utils.ml lwt_utils.ml exchange.ml
-
-intersango.ml: common.ml cohttp_utils.ml utils.ml\
-lwt_utils.ml exchange.ml
+alldeps: _tags cli.ml breakbot.ml mtgox.ml intersango.ml ecb.ml\
+sharedbuf.ml websocket.ml mycohttp.ml utils.ml lwt_utils.ml\
+exchange.ml common.ml config.ml
 
 %.native %.byte %.d.byte %.p.native: %.ml
 	$(CC) $(OPTS) $@

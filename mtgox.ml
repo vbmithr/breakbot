@@ -1,6 +1,7 @@
 open Utils
 open Common
-open Cohttp_utils
+
+module CoUnix = Cohttp_lwt_unix
 
 module CK = Cryptokit
 
@@ -54,7 +55,7 @@ module Protocol = struct
         balance: currency_info;
         max_withdraw: currency_info;
         daily_withdraw_limit: currency_info;
-        monthly_withdraw_limit: currency_info;
+        monthly_withdraw_limit: currency_info option;
         open_orders: currency_info;
         operations: int
       } with rpc
@@ -299,14 +300,10 @@ object (self)
            item ^ currency
          with Not_found -> "generic")
         ^ "/" ^ (List.assoc "call" query) in
-      lwt ret = post_form ~headers ~params endpoint in
+      lwt ret = CoUnix.Client.post_form ~headers ~params endpoint in
       let _, body = Opt.unopt ret in
       lwt body_string = CoUnix.Body.string_of_body body in
-      let () = Printf.printf "%s\n%!" body_string in
-      let () = Printf.printf "%s\n%!"
-        (Rpc.to_string $ Jsonrpc.of_string body_string) in
-      Lwt.return $ `Private_info
-        (get_private_info $ Jsonrpc.of_string body_string)
+      Lwt.return $ `Sync body_string
 
   method currs = stringset_of_list
     ["USD"; "AUD"; "CAD"; "CHF"; "CNY"; "DKK"; "EUR"; "GBP";
@@ -319,6 +316,8 @@ object (self)
   method get_balances =
     lwt res = self#command ~async:false (Protocol.query "private/info") in
     match res with
-      | `Private_info pi -> Lwt.return $ pairs_of_private_info pi
+      | `Sync str ->
+        Jsonrpc.of_string_filter_null str |> get_private_info |>
+            pairs_of_private_info |> Lwt.return
       | _ -> failwith "get_balances"
 end

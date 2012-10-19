@@ -15,12 +15,18 @@ and intersango_key = match (List.assoc "intersango" config) with
 let mtgox = new Mtgox.mtgox mtgox_key mtgox_secret
 let intersango = new Intersango.intersango intersango_key
 
-let print_balances =
+let print_balances name pairs =
+  Printf.printf "Balances for exchange %s\n" name;
+  List.iter (fun (c, b) ->
+    Printf.printf "%s: %f\n%!" c (S.to_face_float b)) pairs
+
+let main () =
   lwt () = Lwt_unix.sleep 0.5 in
-  lwt balances = mtgox#get_balances in
-  let () = List.iter (fun (c, b) ->
-    Printf.printf "%s: %f\n%!" c (S.to_face_float b)) balances
-  in Lwt.return ()
+  lwt b_mtgox = mtgox#get_balances
+  and b_intersango = intersango#get_balances in
+  print_balances "MtGox" b_mtgox;
+  print_balances "Intersango" b_intersango;
+  Lwt.return ()
 
 let () =
-  Lwt_main.run print_balances
+  Lwt_main.run $ main ()
