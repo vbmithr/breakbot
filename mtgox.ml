@@ -35,8 +35,28 @@ module Protocol = struct
   let unsubscribe channel =
     ["op", "unsubscribe"; "channel", string_of_channel channel]
 
-  type message = (string * string) list with rpc
-  type query   = (string * string) list with rpc
+  type async_message = (string * string) list with rpc
+  type params        = (string * string) list with rpc
+  type query  =
+      {
+        fields: params;
+        params: params
+      }
+
+  let rpc_of_query q =
+    let res = rpc_of_params q.fields in match (q.params, res) with
+      | [], res -> res
+      | l, Rpc.Dict v -> Rpc.Dict (("params", rpc_of_params l) :: v)
+      | _ -> failwith "rpc_of_query"
+
+  let query_of_rpc = function
+    | Rpc.Dict fields ->
+      let fields, params = List.partition (fun(k,v) -> k <> "params") fields in
+      {
+        fields=params_of_rpc $ Rpc.Dict fields;
+        params=params_of_rpc $ Rpc.Dict params
+      }
+    | _ -> failwith "query_of_rpc"
 
   type currency_info =
       {
@@ -48,7 +68,12 @@ module Protocol = struct
       } with rpc
 
   let pair_of_currency_info ci =
-    (ci.currency, S.(of_string ci.value_int * ~$1000))
+    ci.currency,
+    S.(of_string ci.value_int *
+         (match ci.currency with
+           | "BTC" -> ~$1
+           | "JPY" -> ~$100000
+           | _     -> ~$1000))
 
   type wallet =
       {
@@ -104,12 +129,15 @@ module Protocol = struct
     List.map (fun (_,w) -> pair_of_wallet w) pi.wallets
 
   type result_type =
-    [ `Async | `Private_info of private_info ]
+    [ `Async | `Sync of string ]
 
-  let query ?(optfields=[]) endpoint =
+  let query ?(async=true) ?(params=[]) ?(optfields=[]) endpoint =
     let nonce = Unix.getmicrotime_str () in
     let id = Digest.to_hex (Digest.string nonce) in
-    ["id", id; "nonce", nonce; "call", endpoint] @ optfields
+    {
+      fields=["id", id; "nonce", nonce; "call", endpoint] @ optfields;
+      params=if async then params else ("nonce", nonce)::params
+    }
 
   let get_depth = query
     ~optfields:["item", "BTC"; "currency", "USD"] "depth"
@@ -117,7 +145,7 @@ module Protocol = struct
   let get_ticker = query
     ~optfields:["item", "BTC"; "currency", "USD"] "ticker"
 
-  let json_id_of_query = List.assoc "id"
+  let json_id_of_query q = List.assoc "id" q.fields
 
   module LL = struct
     type depth =
@@ -260,8 +288,8 @@ object (self)
         main_loop () in
 
       lwt () = Sharedbuf.write_lines buf_out
-        [unsubscribe Ticker |> rpc_of_message |> Jsonrpc.to_string;
-         unsubscribe Trade |> rpc_of_message |> Jsonrpc.to_string] in
+        [unsubscribe Ticker |> rpc_of_async_message |> Jsonrpc.to_string;
+         unsubscribe Trade |> rpc_of_async_message |> Jsonrpc.to_string] in
       lwt _ = self#command (Protocol.query "private/info") in
       (* lwt (_:int) = self#command (Protocol.get_depth) in *)
       (* lwt (_:int) = self#command (Protocol.get_currency_info) in *)
@@ -275,7 +303,7 @@ object (self)
     let signed_request64 = Cohttp.Base64.encode
       (key ^ signed_query ^ query_json) in
     if async then
-      let res = Jsonrpc.to_string $ rpc_of_message
+      let res = Jsonrpc.to_string $ rpc_of_async_message
         ["op", "call";
          "context", "mtgox.com";
          "id", json_id_of_query query;
@@ -283,24 +311,25 @@ object (self)
       lwt (_:int) = Sharedbuf.write_line buf_out res in
       Lwt.return `Async
     else
-      let nonce = Unix.getmicrotime_str () in
-      let params = Cohttp.Header.of_list ["nonce", nonce] in
+      let encoded_params = Uri.encoded_of_query $
+        List.map (fun (k,v) -> k, [v]) query.params in
       let headers = Cohttp.Header.of_list
         ["User-Agent", "GoxCLI";
+         "Content-Type", "application/x-www-form-urlencoded";
          "Rest-Key", Uuidm.to_string $ Opt.unopt (Uuidm.of_bytes key);
          "Rest-Sign", Cohttp.Base64.encode $
-           CK.hash_string (CK.MAC.hmac_sha512 secret)
-           (Uri.encoded_of_query ["nonce", [nonce]])
+           CK.hash_string (CK.MAC.hmac_sha512 secret) encoded_params
         ] in
       let endpoint = Uri.of_string $
         "https://mtgox.com/api/1/" ^
         (try
-           let item = List.assoc "item" query
-           and currency = List.assoc "currency" query in
+           let item = List.assoc "item" query.fields
+           and currency = List.assoc "currency" query.fields in
            item ^ currency
          with Not_found -> "generic")
-        ^ "/" ^ (List.assoc "call" query) in
-      lwt ret = CoUnix.Client.post_form ~headers ~params endpoint in
+        ^ "/" ^ (List.assoc "call" query.fields) in
+      lwt ret = CoUnix.Client.post ~chunked:false ~headers
+       ?body:(CoUnix.Body.body_of_string encoded_params) endpoint in
       let _, body = Opt.unopt ret in
       lwt body_string = CoUnix.Body.string_of_body body in
       Lwt.return $ `Sync body_string
@@ -311,13 +340,35 @@ object (self)
 
   method base_curr = "USD"
 
-  method place_order kind curr price amount = Lwt.return ()
-  method withdraw_btc amount address = Lwt.return ()
+  method place_order kind curr price amount =
+    lwt res = self#command ~async:false $
+      Protocol.query ~async:false
+      ~optfields:["item","BTC"; "currency", curr]
+      ~params:(["type", Order.string_of_kind kind;
+               "amount_int", S.to_string amount]
+      @ S.(if price > ~$0 then
+          ["price_int", to_string $ price / ~$1000] else []))
+      "private/order/add" in
+    match res with
+      | `Sync str -> Printf.printf "%s\n%!" str; Lwt.return ()
+      | _ -> failwith "place_order"
+
+  method withdraw_btc amount address =
+    lwt res = self#command ~async:false $
+      Protocol.query ~async:false
+      ~params:["address", address; "amount_int", S.to_string amount]
+      "bitcoin/send_simple" in
+    match res with
+      | `Sync str -> Printf.printf "%s\n%!" str; Lwt.return ()
+      | _ -> failwith "withdraw_btc"
+
   method get_balances =
-    lwt res = self#command ~async:false (Protocol.query "private/info") in
+    lwt res = self#command ~async:false $
+      Protocol.query ~async:false "private/info" in
     match res with
       | `Sync str ->
         Jsonrpc.of_string_filter_null str |> get_private_info |>
             pairs_of_private_info |> Lwt.return
       | _ -> failwith "get_balances"
+
 end

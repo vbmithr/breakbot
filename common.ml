@@ -38,6 +38,8 @@ module Order = struct
       | "ask" | "asks" -> Ask
       | _ -> failwith "Order.kind_of_string"
 
+  let string_of_kind = function Bid -> "bid" | Ask -> "ask"
+
   type strategy =
     | Market (* non-limit order *)
     | Limit (* Good till canceled -- classic limit order *)
