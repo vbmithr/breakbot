@@ -112,7 +112,7 @@ class intersango api_key =
   and order_uri = api_uri ^ "placeLimitOrder.php"
   and withdraw_uri = api_uri ^ "createBitcoinWithdrawalRequest.php" in
 object (self)
-  inherit Exchange.exchange "intersango"
+  inherit exchange "intersango"
 
   val mutable accounts = Lwt.return []
 

@@ -256,9 +256,11 @@ end
 
 open Protocol
 
+type command_result = Async | Sync of string
+
 class mtgox key secret =
 object (self)
-  inherit Exchange.exchange "mtgox"
+  inherit exchange "mtgox"
 
   val mutable buf_in    = Sharedbuf.empty ~bufsize:0 ()
   val mutable buf_out   = Sharedbuf.empty ~bufsize:0 ()
@@ -309,7 +311,7 @@ object (self)
          "id", json_id_of_query query;
          "call", signed_request64] in
       lwt (_:int) = Sharedbuf.write_line buf_out res in
-      Lwt.return `Async
+      Lwt.return Async
     else
       let encoded_params = Uri.encoded_of_query $
         List.map (fun (k,v) -> k, [v]) query.params in
@@ -332,7 +334,7 @@ object (self)
        ?body:(CoUnix.Body.body_of_string encoded_params) endpoint in
       let _, body = Opt.unopt ret in
       lwt body_string = CoUnix.Body.string_of_body body in
-      Lwt.return $ `Sync body_string
+      Lwt.return $ Sync body_string
 
   method currs = stringset_of_list
     ["USD"; "AUD"; "CAD"; "CHF"; "CNY"; "DKK"; "EUR"; "GBP";
@@ -350,7 +352,7 @@ object (self)
           ["price_int", to_string $ price / ~$1000] else []))
       "private/order/add" in
     match res with
-      | `Sync str -> Printf.printf "%s\n%!" str; Lwt.return ()
+      | Sync str -> Printf.printf "%s\n%!" str; Lwt.return ()
       | _ -> failwith "place_order"
 
   method withdraw_btc amount address =
@@ -359,14 +361,14 @@ object (self)
       ~params:["address", address; "amount_int", S.to_string amount]
       "bitcoin/send_simple" in
     match res with
-      | `Sync str -> Printf.printf "%s\n%!" str; Lwt.return ()
+      | Sync str -> Printf.printf "%s\n%!" str; Lwt.return ()
       | _ -> failwith "withdraw_btc"
 
   method get_balances =
     lwt res = self#command ~async:false $
       Protocol.query ~async:false "private/info" in
     match res with
-      | `Sync str ->
+      | Sync str ->
         Jsonrpc.of_string_filter_null str |> get_private_info |>
             pairs_of_private_info |> Lwt.return
       | _ -> failwith "get_balances"

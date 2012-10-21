@@ -1,6 +1,5 @@
 open Utils
 
-module ZMap = Map.Make(Z)
 
 module Jsonrpc = struct
   include Jsonrpc
@@ -28,6 +27,8 @@ end
 
 module S = Cent (struct let value = 1e8 end)
 
+module SMap = Map.Make(S)
+
 module Order = struct
   type kind = Bid | Ask
 
@@ -53,8 +54,8 @@ module Order = struct
         exchange: string;
         kind: kind;
         currency: string;
-        price: Z.t;
-        amount: Z.t
+        price: S.t;
+        amount: S.t
       }
 
   (** When an exchange fails to send an order *)
@@ -69,7 +70,7 @@ module type BOOK = sig
   val add : ?ts:int64 -> S.t -> S.t -> value t -> value t
   val update : ?ts:int64 -> S.t -> S.t -> value t -> value t
 
-  val sum : ?min_v:S.t -> ?max_v:S.t -> value t -> Z.t
+  val sum : ?min_v:S.t -> ?max_v:S.t -> value t -> S.t
   val buy_price : value t -> S.t -> S.t
   val sell_price : value t -> S.t -> S.t
 
@@ -81,29 +82,29 @@ end
 
 (** A book represent the depth for one currency, and one order kind *)
 module Book : BOOK = struct
-  include ZMap
+  include SMap
 
   type value = S.t * int64
 
   let of_bindings bds =
-    List.fold_left (fun acc (k,v) -> ZMap.add k v acc) ZMap.empty bds
+    List.fold_left (fun acc (k,v) -> SMap.add k v acc) SMap.empty bds
 
   let min_value book =
     let open Z in
-        ZMap.fold (fun _ v acc -> min v acc) book Z.(pow ~$2 128)
+        SMap.fold (fun _ v acc -> min v acc) book S.(pow ~$2 128)
 
-  let add ?(ts=Unix.getmicrotime_int64 ()) (price:Z.t) (amount:Z.t) (book:value t) =
-    ZMap.add price (amount,ts) book
+  let add ?(ts=Unix.getmicrotime_int64 ()) (price:S.t) (amount:S.t) (book:value t) =
+    SMap.add price (amount,ts) book
 
   let update ?(ts=Unix.getmicrotime_int64 ()) price amount book =
     try
-      let old_amount, _ = ZMap.find price book in
-      ZMap.add price (Z.(old_amount + amount), ts) book
-    with Not_found -> ZMap.add price (amount, ts) book
+      let old_amount, _ = SMap.find price book in
+      SMap.add price (S.(old_amount + amount), ts) book
+    with Not_found -> SMap.add price (amount, ts) book
 
-  let sum ?(min_v=Z.(-pow ~$2 128)) ?(max_v=Z.(pow ~$2 128)) book =
+  let sum ?(min_v=S.(-pow ~$2 128)) ?(max_v=S.(pow ~$2 128)) book =
     let open Z in
-        ZMap.fold
+        SMap.fold
           (fun pr (am,_) acc ->
             if (geq pr min_v) && (leq pr max_v)
             then acc + pr*am else acc)
@@ -112,27 +113,27 @@ module Book : BOOK = struct
   let to_depth book = function
     | Order.Bid ->
       let open Z in
-          let bindings = ZMap.bindings book in
+          let bindings = SMap.bindings book in
           fst (List.fold_right (fun (pr,(am,_)) (depth, am_) ->
-            ZMap.add pr (am+am_) depth, am+am_) bindings (ZMap.empty, ~$0))
+            SMap.add pr (am+am_) depth, am+am_) bindings (SMap.empty, ~$0))
 
     | Order.Ask ->
       let open Z in
           let _,bindings =
-            ZMap.fold (fun pr (am,_) (am_,bds) ->
+            SMap.fold (fun pr (am,_) (am_,bds) ->
               (am_ + am), (pr, am_+am)::bds
             ) book (~$0,[]) in
           of_bindings bindings
 
-  let merge_max = ZMap.merge (fun _ v1 v2 -> match v1, v2 with
-    | Some v1, Some v2 -> Some Z.(max v1 v2)
+  let merge_max = SMap.merge (fun _ v1 v2 -> match v1, v2 with
+    | Some v1, Some v2 -> Some S.(max v1 v2)
     | Some v1, None    -> Some v1
     | None,    Some v2 -> Some v2
     | None,    None    -> None)
 
   let buy_price ask_book amount =
     let open Z in
-        fst (ZMap.fold (fun pr (am,_) (pr_, am_) ->
+        fst (SMap.fold (fun pr (am,_) (pr_, am_) ->
           match sign (am_ - am) with
             | 1 -> (pr_ + pr*am, am_ - am)
             | 0 -> (pr_ + pr*am, am_ - am)
@@ -142,7 +143,7 @@ module Book : BOOK = struct
 
   let sell_price bid_book amount =
     let open Z in
-        let bindings = ZMap.bindings bid_book in
+        let bindings = SMap.bindings bid_book in
         fst (List.fold_right (fun (pr, (am,_)) (pr_,am_) ->
           match sign (am_ - am) with
             | 1 -> (pr_ + pr*am, am_ - am)
@@ -153,14 +154,14 @@ module Book : BOOK = struct
 
   let amount_below_or_eq book price =
     let open Z in
-        let l, data, r = ZMap.split price book in
-        (ZMap.fold (fun pr (am,_) acc -> acc + am)
+        let l, data, r = SMap.split price book in
+        (SMap.fold (fun pr (am,_) acc -> acc + am)
            l (fst (Opt.unopt ~default:(~$0,0L) data)))
 
   let amount_above_or_eq book price =
     let open Z in
-        let l, data, r = ZMap.split price book in
-        (ZMap.fold (fun pr (am,_) acc -> acc + am)
+        let l, data, r = SMap.split price book in
+        (SMap.fold (fun pr (am,_) acc -> acc + am)
            r (fst (Opt.unopt ~default:(~$0,0L) data)))
 
   (** Gives the quantity that can be arbitraged. This function does
@@ -175,7 +176,7 @@ module Book : BOOK = struct
           let merged = merge_max bid_depth ask_depth in
           let qty = min_value merged in qty, buy_price ask qty
         else
-          Z.(~$0, ~$0)
+          S.(~$0, ~$0)
 
   let diff book1 book2 =
     let open Z in
@@ -184,7 +185,7 @@ module Book : BOOK = struct
           | Some (v1,ts1) , None    -> Some ((~- v1), ts1)
           | None, Some (v2,ts2)    -> Some (v2, ts2)
           | Some (v1,ts1), Some (v2,ts2) -> Some ((v2 - v1), (max ts1 ts2)) in
-        ZMap.merge merge_fun book1 book2
+        SMap.merge merge_fun book1 book2
 
   let patch book patch =
     let open Z in
@@ -193,7 +194,7 @@ module Book : BOOK = struct
           | Some (v1,ts1), None -> Some (v1, ts1)
           | None, Some (v2,ts2) -> Some (v2, ts2)
           | Some (v1,ts1), Some (v2,ts2) -> Some ((v1 + v2), (max ts1 ts2)) in
-        ZMap.merge merge_fun book patch
+        SMap.merge merge_fun book patch
 end
 
 module BooksFunctor = struct
@@ -238,14 +239,14 @@ module BooksFunctor = struct
       in
       let qty1, pr1 = (B.arbiter_unsafe b2 a1)
       and qty2, pr2 = (B.arbiter_unsafe b1 a2) in
-      match Z.(sign (qty1 - qty2)) with
+      match S.(sign (qty1 - qty2)) with
         | 1 ->
           let sell_pr = B.sell_price b2 qty1 in
-          (qty1, Z.(sell_pr - pr1)), (qty2, pr2)
+          (qty1, S.(sell_pr - pr1)), (qty2, pr2)
         | 0 -> (qty1, pr1), (qty2, pr2)
         | -1 ->
           let sell_pr = B.sell_price b1 qty2 in
-          (qty1, pr1), (qty2, Z.(sell_pr - pr2))
+          (qty1, pr1), (qty2, S.(sell_pr - pr2))
         | _ -> failwith ""
 
     let print books =
@@ -263,3 +264,26 @@ module BooksFunctor = struct
 end
 
 module Books = BooksFunctor.Make(Book)
+
+class virtual exchange (name:string) =
+object (self)
+  val mutable books = Books.empty
+  val          mvar = Lwt_mvar.create_empty ()
+
+  method name      = name
+  method print     = Printf.printf "Books for exchange %s:\n%!" name;
+    Books.print books
+  method notify    = Lwt_mvar.put mvar self
+
+  method get_books = books
+  method get_mvar  = mvar
+
+  method virtual currs     : StringSet.t
+  method virtual base_curr : string
+
+  method virtual update    : unit Lwt.t
+  method virtual place_order : Order.kind -> string ->
+    S.t -> S.t -> unit Lwt.t
+  method virtual withdraw_btc : S.t -> string -> unit Lwt.t
+  method virtual get_balances : ((string * S.t) list) Lwt.t
+end

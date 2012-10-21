@@ -1,6 +1,5 @@
 open Utils
 open Common
-open Exchange
 
 (* Works only if processing is much faster than the rate at which we
    receive/parse the messages from the exchange. Otherwise processing
@@ -19,8 +18,8 @@ let () =
     | _ -> failwith "Syntax error in config file."
   in
   let exchanges =
-    [(new Intersango.intersango intersango_key :> Exchange.exchange);
-     (new Mtgox.mtgox mtgox_key mtgox_secret :> Exchange.exchange)] in
+    [(new Intersango.intersango intersango_key :> exchange);
+     (new Mtgox.mtgox mtgox_key mtgox_secret   :> exchange)] in
   let mvars = List.map (fun xch -> xch#get_mvar) exchanges in
   let process mvars =
     lwt converters = Ecb.converters in
@@ -40,14 +39,14 @@ let () =
                   Books.arbiter_unsafe
                     curr converters x1#get_books x1#base_curr
                     x2#get_books x2#base_curr
-                with Not_found -> Z.((~$0,~$0),(~$0,~$0))
+                with Not_found -> S.((~$0,~$0),(~$0,~$0))
               in ((curr, ret)::acc)
             ) common_currs [] in
         List.iter (fun (curr, ((qty1,pr1), (qty2,pr2))) ->
           Printf.printf "%s -> : %f (%f %s)\n%!"
-            curr (S.to_face_float qty1) (Z.to_float pr1 /. 1e16) curr;
+            curr (S.to_face_float qty1) (S.to_float pr1 /. 1e16) curr;
           Printf.printf "%s <- : %f (%f %s)\n%!"
-            curr (S.to_face_float qty2) (Z.to_float pr2 /. 1e16) curr)
+            curr (S.to_face_float qty2) (S.to_float pr2 /. 1e16) curr)
           res in
       let () = List.iter (fun x -> arbiter_one xch x) other_xchs in
       process ()
