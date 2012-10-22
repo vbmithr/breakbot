@@ -1,6 +1,5 @@
 open Utils
 
-
 module Jsonrpc = struct
   include Jsonrpc
 
@@ -268,7 +267,7 @@ module Books = BooksFunctor.Make(Book)
 class virtual exchange (name:string) =
 object (self)
   val mutable books = Books.empty
-  val          mvar = (Lwt_mvar.create_empty () : exchange Lwt_mvar.t)
+  val         mvar  = (Lwt_mvar.create_empty () : exchange Lwt_mvar.t)
 
   method name      = name
   method print     = Printf.printf "Books for exchange %s:\n%!" name;
@@ -281,8 +280,8 @@ object (self)
   method virtual base_curr : string
 
   method virtual update    : unit Lwt.t
-  method virtual place_order : Order.kind -> string ->
-    S.t -> S.t -> unit Lwt.t
-  method virtual withdraw_btc : S.t -> string -> unit Lwt.t
+  method virtual place_order : Order.kind -> string -> S.t -> S.t ->
+    Rpc.response Lwt.t
+  method virtual withdraw_btc : S.t -> string -> Rpc.response Lwt.t
   method virtual get_balances : ((string * S.t) list) Lwt.t
 end

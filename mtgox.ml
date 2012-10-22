@@ -60,11 +60,11 @@ module Protocol = struct
 
   type currency_info =
       {
-        currency: string;
-        display: string;
-        display_short: string;
-        value: string;
-        value_int: string
+        currency      : string;
+        display       : string;
+        display_short : string;
+        value         : string;
+        value_int     : string
       } with rpc
 
   let pair_of_currency_info ci =
@@ -75,14 +75,29 @@ module Protocol = struct
            | "JPY" -> ~$100000
            | _     -> ~$1000))
 
+  type ticker =
+      {
+        high       : currency_info;
+        low        : currency_info;
+        avg        : currency_info;
+        vwap       : currency_info;
+        vol        : currency_info;
+        last_local : currency_info;
+        last       : currency_info;
+        last_orig  : currency_info;
+        last_all   : currency_info;
+        buy        : currency_info;
+        sell       : currency_info
+      } with rpc
+
   type wallet =
       {
-        balance: currency_info;
-        max_withdraw: currency_info;
-        daily_withdraw_limit: currency_info;
-        monthly_withdraw_limit: currency_info option;
-        open_orders: currency_info;
-        operations: int
+        balance                : currency_info;
+        max_withdraw           : currency_info;
+        daily_withdraw_limit   : currency_info;
+        monthly_withdraw_limit : currency_info option;
+        open_orders            : currency_info;
+        operations             : int
       } with rpc
           ("balance" -> "Balance",
            "daily_withdraw_limit" -> "Daily_Withdraw_Limit",
@@ -98,16 +113,16 @@ module Protocol = struct
 
   type private_info =
       {
-        created: string;
-        id: string;
-        index: string;
-        language: string;
-        last_login: string;
-        login: string;
-        monthly_volume: currency_info;
-        rights: string list;
-        trade_fee: float;
-        wallets: wallets
+        created        : string;
+        id             : string;
+        index          : string;
+        language       : string;
+        last_login     : string;
+        login          : string;
+        monthly_volume : currency_info;
+        rights         : string list;
+        trade_fee      : float;
+        wallets        : wallets
       } with rpc
           ("created" -> "Created",
            "id" -> "Id",
@@ -120,16 +135,18 @@ module Protocol = struct
            "trade_fee" -> "Trade_Fee",
            "wallets" -> "Wallets")
 
-  type result_pi = {result: string; return: private_info} with rpc
+  let response_of_string str =
+    let open Rpc in match Jsonrpc.of_string_filter_null str with
+      | Dict ["result", String "success"; "return", obj] -> success obj
+      | Dict ["result", String "error";
+              "error", String err;
+              "token", String tok] as obj -> failure obj
+      | _ -> failwith "sync_result_of_rpc"
 
-  let get_private_info rpc =
-    let res = result_pi_of_rpc rpc in res.return
+  let rpc_of_response res = res.Rpc.contents
 
   let pairs_of_private_info pi =
     List.map (fun (_,w) -> pair_of_wallet w) pi.wallets
-
-  type result_type =
-    [ `Async | `Sync of string ]
 
   let query ?(async=true) ?(params=[]) ?(optfields=[]) endpoint =
     let nonce = Unix.getmicrotime_str () in
@@ -147,61 +164,41 @@ module Protocol = struct
 
   let json_id_of_query q = List.assoc "id" q.fields
 
-  module LL = struct
-    type depth =
-        {
-          currency: string;
-          item: string;
-          now: string;
-          price: string;
-          price_int: string;
-          total_volume_int: string;
-          type_: int;
-          type_str: string;
-          volume: string;
-          volume_int: string;
-        } with rpc ("type_" -> "type")
-
-    type depth_msg =
-        {
-          channel: string;
-          depth: depth;
-          op: string;
-          origin: string;
-          private_: string;
-        } with rpc ("private_" -> "private")
-  end
-
-  module HL = struct
-    type depth =
-        {
-          curr: string;
-          kind: Order.kind;
-          price: Z.t;
-          amount: Z.t;
-          ts: int64
-        }
-
-    let of_depth (d:LL.depth_msg) =
-      let d = d.LL.depth in
+  type depth =
       {
-        curr=d.LL.currency;
-        kind=Order.kind_of_string d.LL.type_str;
-        price=Z.(of_string d.LL.price_int * ~$1000);
-        amount=Z.of_string d.LL.total_volume_int;
-        ts=Int64.of_string d.LL.now
-      }
-  end
+        currency: string;
+        item: string;
+        now: string;
+        price: string;
+        price_int: string;
+        total_volume_int: string;
+        type_: int;
+        type_str: string;
+        volume: string;
+        volume_int: string;
+      } with rpc ("type_" -> "type")
 
+  type depth_msg =
+      {
+        channel: string;
+        depth: depth;
+        op: string;
+        origin: string;
+        private_: string;
+      } with rpc ("private_" -> "private")
 end
 
 module Parser = struct
   open Protocol
   let parse_depth books rpc =
-    let ll = LL.depth_msg_of_rpc rpc in
-    let hl = HL.of_depth ll in
-    Books.add ~ts:hl.HL.ts books
-      hl.HL.curr hl.HL.kind hl.HL.price hl.HL.amount
+    let dm = depth_msg_of_rpc rpc in
+    Books.add
+      ~ts:(Int64.of_string dm.depth.now)
+      books
+      dm.depth.currency
+      (Order.kind_of_string dm.depth.type_str)
+      S.(of_string dm.depth.price_int * ~$1000)
+      S.(of_string dm.depth.total_volume_int)
 
   let parse_orderbook books decoder =
     let rec parse_orderbook ctx books =
@@ -256,8 +253,6 @@ end
 
 open Protocol
 
-type command_result = Async | Sync of string
-
 class mtgox key secret =
 object (self)
   inherit exchange "mtgox"
@@ -292,49 +287,49 @@ object (self)
       lwt () = Sharedbuf.write_lines buf_out
         [unsubscribe Ticker |> rpc_of_async_message |> Jsonrpc.to_string;
          unsubscribe Trade |> rpc_of_async_message |> Jsonrpc.to_string] in
-      lwt _ = self#command (Protocol.query "private/info") in
-      (* lwt (_:int) = self#command (Protocol.get_depth) in *)
-      (* lwt (_:int) = self#command (Protocol.get_currency_info) in *)
+      lwt (_:int) = self#command_async (Protocol.query "private/info") in
+      (* lwt (_:int) = self#command_async (Protocol.get_depth) in *)
+      (* lwt (_:int) = self#command_async (Protocol.get_currency_info) in *)
 
       main_loop () in
     Websocket.with_websocket "http://websocket.mtgox.com/mtgox" update
 
-  method command ?(async=true) query =
+  method command_async query =
     let query_json = Jsonrpc.to_string $ rpc_of_query query in
-    let signed_query = CK.hash_string (CK.MAC.hmac_sha512 secret) query_json in
+    let signed_query = CK.hash_string
+      (CK.MAC.hmac_sha512 secret) query_json in
     let signed_request64 = Cohttp.Base64.encode
       (key ^ signed_query ^ query_json) in
-    if async then
-      let res = Jsonrpc.to_string $ rpc_of_async_message
-        ["op", "call";
-         "context", "mtgox.com";
-         "id", json_id_of_query query;
-         "call", signed_request64] in
-      lwt (_:int) = Sharedbuf.write_line buf_out res in
-      Lwt.return Async
-    else
-      let encoded_params = Uri.encoded_of_query $
-        List.map (fun (k,v) -> k, [v]) query.params in
-      let headers = Cohttp.Header.of_list
-        ["User-Agent", "GoxCLI";
-         "Content-Type", "application/x-www-form-urlencoded";
-         "Rest-Key", Uuidm.to_string $ Opt.unopt (Uuidm.of_bytes key);
-         "Rest-Sign", Cohttp.Base64.encode $
-           CK.hash_string (CK.MAC.hmac_sha512 secret) encoded_params
-        ] in
-      let endpoint = Uri.of_string $
-        "https://mtgox.com/api/1/" ^
-        (try
-           let item = List.assoc "item" query.fields
-           and currency = List.assoc "currency" query.fields in
-           item ^ currency
-         with Not_found -> "generic")
-        ^ "/" ^ (List.assoc "call" query.fields) in
-      lwt ret = CoUnix.Client.post ~chunked:false ~headers
-       ?body:(CoUnix.Body.body_of_string encoded_params) endpoint in
-      let _, body = Opt.unopt ret in
-      lwt body_string = CoUnix.Body.string_of_body body in
-      Lwt.return $ Sync body_string
+    let res = Jsonrpc.to_string $ rpc_of_async_message
+      ["op", "call";
+       "context", "mtgox.com";
+       "id", json_id_of_query query;
+       "call", signed_request64] in
+    Sharedbuf.write_line buf_out res
+
+  method command query =
+    let encoded_params = Uri.encoded_of_query $
+      List.map (fun (k,v) -> k, [v]) query.params in
+    let headers = Cohttp.Header.of_list
+      ["User-Agent", "GoxCLI";
+       "Content-Type", "application/x-www-form-urlencoded";
+       "Rest-Key", Uuidm.to_string $ Opt.unopt (Uuidm.of_bytes key);
+       "Rest-Sign", Cohttp.Base64.encode $
+         CK.hash_string (CK.MAC.hmac_sha512 secret) encoded_params
+      ] in
+    let endpoint = Uri.of_string $
+      "https://mtgox.com/api/1/" ^
+      (try
+         let item = List.assoc "item" query.fields
+         and currency = List.assoc "currency" query.fields in
+         item ^ currency
+       with Not_found -> "generic")
+      ^ "/" ^ (List.assoc "call" query.fields) in
+    lwt ret = CoUnix.Client.post ~chunked:false ~headers
+      ?body:(CoUnix.Body.body_of_string encoded_params) endpoint in
+    let _, body = Opt.unopt ret in
+    lwt body_string = CoUnix.Body.string_of_body body in
+    Lwt.return body_string
 
   method currs = stringset_of_list
     ["USD"; "AUD"; "CAD"; "CHF"; "CNY"; "DKK"; "EUR"; "GBP";
@@ -343,34 +338,25 @@ object (self)
   method base_curr = "USD"
 
   method place_order kind curr price amount =
-    lwt res = self#command ~async:false $
-      Protocol.query ~async:false
+    lwt res = self#command $ Protocol.query ~async:false
       ~optfields:["item","BTC"; "currency", curr]
       ~params:(["type", Order.string_of_kind kind;
                "amount_int", S.to_string amount]
       @ S.(if price > ~$0 then
           ["price_int", to_string $ price / ~$1000] else []))
       "private/order/add" in
-    match res with
-      | Sync str -> Printf.printf "%s\n%!" str; Lwt.return ()
-      | _ -> failwith "place_order"
+    response_of_string res |> Lwt.return
 
   method withdraw_btc amount address =
-    lwt res = self#command ~async:false $
-      Protocol.query ~async:false
+    lwt res = self#command $ Protocol.query ~async:false
       ~params:["address", address; "amount_int", S.to_string amount]
       "bitcoin/send_simple" in
-    match res with
-      | Sync str -> Printf.printf "%s\n%!" str; Lwt.return ()
-      | _ -> failwith "withdraw_btc"
+    response_of_string res |> Lwt.return
 
   method get_balances =
-    lwt res = self#command ~async:false $
-      Protocol.query ~async:false "private/info" in
-    match res with
-      | Sync str ->
-        Jsonrpc.of_string_filter_null str |> get_private_info |>
-            pairs_of_private_info |> Lwt.return
-      | _ -> failwith "get_balances"
-
+    lwt res = self#command $ Protocol.query ~async:false "private/info" in
+    response_of_string res |> rpc_of_response
+      |> private_info_of_rpc
+      |> pairs_of_private_info
+      |> Lwt.return
 end

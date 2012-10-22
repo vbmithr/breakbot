@@ -24,7 +24,7 @@ let main () =
   lwt () = Lwt_unix.sleep 0.5 in
   lwt b_mtgox = mtgox#get_balances
   and b_intersango = intersango#get_balances in
-  (* lwt _ = mtgox#withdraw_btc Z.(~$1000000) "1FTyBHz1C3nYYkRPhGbdRck4VYaRWkbDM3" in *)
+  lwt _ = mtgox#withdraw_btc Z.(~$1000000) "1FTyBHz1C3nYYkRPhGbdRck4VYaRWkbDM3" in
   lwt _ = mtgox#place_order Order.Ask "USD" S.(~$10000000000) S.(~$100000000) in
   print_balances "MtGox" b_mtgox;
   print_balances "Intersango" b_intersango;

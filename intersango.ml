@@ -147,7 +147,7 @@ object (self)
     lwt ret = CoUnix.Client.post_form ~params uri in
     let _, body = Opt.unopt ret in
     lwt body_string = CoUnix.Body.string_of_body body in
-    Lwt.return (Printf.printf "Place_order: %s\n%!" body_string)
+    Lwt.return $ Rpc.success (Rpc.String body_string)
 
   method get_account_id curr =
     lwt a =
@@ -168,7 +168,7 @@ object (self)
     lwt ret = CoUnix.Client.post_form ~params uri in
     let _, body = Opt.unopt ret in
     lwt body_string = CoUnix.Body.string_of_body body in
-    Lwt.return (Printf.printf "Withdraw BTC: %s\n%!" body_string)
+    Lwt.return $ Rpc.success (Rpc.String body_string)
 
   method get_balances =
     accounts >|= List.map (fun ac ->
