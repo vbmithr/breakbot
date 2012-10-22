@@ -1,6 +1,7 @@
 (** Get the latest ECB rates *)
 
 open Utils
+open Lwt_utils
 
 open Cohttp_lwt_unix
 
@@ -8,14 +9,13 @@ let url = "http://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml"
 
 let get_rates ?(url=url) () =
   let uri = Uri.of_string url in
-  lwt ret = Client.get uri in
-  let resp, body = Opt.unopt ret in
+  lwt resp, body = Lwt.merge_opt $ Client.get uri in
   lwt xml = Body.string_of_body body in
   let xml_input = Xmlm.make_input (`String (0, xml)) in
   let rec parse acc input =
     let next = try Some (Xmlm.input input) with _ -> None in
     if next = None then acc else
-      match Opt.unopt next with
+      match Opt.unbox next with
         | `El_start ((_, "Cube"),
                      [((_, "currency"), curr); ((_, "rate"), rate)]) ->
           parse ((curr, float_of_string rate)::acc) input

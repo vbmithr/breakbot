@@ -3,6 +3,17 @@ let (=<<) f g  = Lwt.bind g f
 let (>|=) f g  = Lwt.map g f
 let (=|<) f g  = Lwt.map f g
 
+module Lwt = struct
+  include Lwt
+
+  let of_opt = function
+    | Some v -> return v
+    | None   -> fail Not_found
+
+  let merge_opt m =
+    bind m (function Some v -> return v | None -> fail Not_found)
+end
+
 module Lwt_io = struct
   include Lwt_io
   open Lwt

@@ -1,4 +1,5 @@
 open Utils
+open Lwt_utils
 open Common
 
 module CoUnix = Cohttp_lwt_unix
@@ -135,15 +136,14 @@ module Protocol = struct
            "trade_fee" -> "Trade_Fee",
            "wallets" -> "Wallets")
 
-  let response_of_string str =
+  let parse_response str =
     let open Rpc in match Jsonrpc.of_string_filter_null str with
-      | Dict ["result", String "success"; "return", obj] -> success obj
+      | Dict ["result", String "success"; "return", obj] -> Lwt.return obj
       | Dict ["result", String "error";
               "error", String err;
-              "token", String tok] as obj -> failure obj
+              "token", String tok] ->
+        Lwt.fail $ Failure (tok ^ ": " ^ err)
       | _ -> failwith "sync_result_of_rpc"
-
-  let rpc_of_response res = res.Rpc.contents
 
   let pairs_of_private_info pi =
     List.map (fun (_,w) -> pair_of_wallet w) pi.wallets
@@ -156,35 +156,32 @@ module Protocol = struct
       params=if async then params else ("nonce", nonce)::params
     }
 
-  let get_depth = query
-    ~optfields:["item", "BTC"; "currency", "USD"] "depth"
-
-  let get_ticker = query
-    ~optfields:["item", "BTC"; "currency", "USD"] "ticker"
+  let query_simple curr endpoint = query
+    ~optfields:["item", "BTC"; "currency", curr] endpoint
 
   let json_id_of_query q = List.assoc "id" q.fields
 
   type depth =
       {
-        currency: string;
-        item: string;
-        now: string;
-        price: string;
-        price_int: string;
-        total_volume_int: string;
-        type_: int;
-        type_str: string;
-        volume: string;
-        volume_int: string;
+        currency         : string;
+        item             : string;
+        now              : string;
+        price            : string;
+        price_int        : string;
+        total_volume_int : string;
+        type_            : int;
+        type_str         : string;
+        volume           : string;
+        volume_int       : string;
       } with rpc ("type_" -> "type")
 
   type depth_msg =
       {
-        channel: string;
-        depth: depth;
-        op: string;
-        origin: string;
-        private_: string;
+        channel  : string;
+        depth    : depth;
+        op       : string;
+        origin   : string;
+        private_ : string;
       } with rpc ("private_" -> "private")
 end
 
@@ -255,7 +252,7 @@ open Protocol
 
 class mtgox key secret =
 object (self)
-  inherit exchange "mtgox"
+  inherit Exchange.exchange "mtgox"
 
   val mutable buf_in    = Sharedbuf.empty ~bufsize:0 ()
   val mutable buf_out   = Sharedbuf.empty ~bufsize:0 ()
@@ -270,17 +267,18 @@ object (self)
 
       let rec main_loop () =
         lwt (_:int) = Sharedbuf.with_read buf_in (fun buf len ->
-          lwt () =
-            (if len > 0 then (* Uncomplete message *)
-                Lwt.return (Buffer.add_string buf_json_in (String.sub buf 0 len))
-             else
-                let buf_str = Buffer.contents buf_json_in in
-                let () = Printf.printf "%s\n%!" buf_str in
-                lwt new_books = Parser.parse books buf_str in
-                let () = books <- new_books in
-                let () = Buffer.clear buf_json_in in (* maybe use reset here ? *)
-                self#notify)
-          in Lwt.return len)
+          if len > 0 then (* Uncomplete message *)
+            let () = Buffer.add_string buf_json_in (String.sub buf 0 len)
+            in Lwt.return len
+          else
+            let buf_str = Buffer.contents buf_json_in in
+            let () = Printf.printf "%s\n%!" buf_str in
+            lwt new_books = Parser.parse books buf_str in
+            let () = books <- new_books in
+            (* maybe use reset here ? *)
+            let () = Buffer.clear buf_json_in in
+            lwt () = self#notify in
+            Lwt.return len)
         in
         main_loop () in
 
@@ -313,7 +311,7 @@ object (self)
     let headers = Cohttp.Header.of_list
       ["User-Agent", "GoxCLI";
        "Content-Type", "application/x-www-form-urlencoded";
-       "Rest-Key", Uuidm.to_string $ Opt.unopt (Uuidm.of_bytes key);
+       "Rest-Key", Uuidm.to_string $ Opt.unbox (Uuidm.of_bytes key);
        "Rest-Sign", Cohttp.Base64.encode $
          CK.hash_string (CK.MAC.hmac_sha512 secret) encoded_params
       ] in
@@ -325,13 +323,12 @@ object (self)
          item ^ currency
        with Not_found -> "generic")
       ^ "/" ^ (List.assoc "call" query.fields) in
-    lwt ret = CoUnix.Client.post ~chunked:false ~headers
+    lwt resp, body = Lwt.merge_opt $
+      CoUnix.Client.post ~chunked:false ~headers
       ?body:(CoUnix.Body.body_of_string encoded_params) endpoint in
-    let _, body = Opt.unopt ret in
-    lwt body_string = CoUnix.Body.string_of_body body in
-    Lwt.return body_string
+    CoUnix.Body.string_of_body body
 
-  method currs = stringset_of_list
+  method currs = StringSet.of_list
     ["USD"; "AUD"; "CAD"; "CHF"; "CNY"; "DKK"; "EUR"; "GBP";
      "HKD"; "JPY"; "NZD"; "PLN"; "RUB"; "SEK"; "SGD"; "THB"]
 
@@ -341,22 +338,27 @@ object (self)
     lwt res = self#command $ Protocol.query ~async:false
       ~optfields:["item","BTC"; "currency", curr]
       ~params:(["type", Order.string_of_kind kind;
-               "amount_int", S.to_string amount]
-      @ S.(if price > ~$0 then
-          ["price_int", to_string $ price / ~$1000] else []))
+                "amount_int", S.to_string amount]
+               @ S.(if price > ~$0 then
+                   ["price_int", to_string $ price / ~$1000] else []))
       "private/order/add" in
-    response_of_string res |> Lwt.return
+    parse_response res >|= ignore
 
   method withdraw_btc amount address =
     lwt res = self#command $ Protocol.query ~async:false
       ~params:["address", address; "amount_int", S.to_string amount]
       "bitcoin/send_simple" in
-    response_of_string res |> Lwt.return
+    parse_response res >|= ignore
 
   method get_balances =
     lwt res = self#command $ Protocol.query ~async:false "private/info" in
-    response_of_string res |> rpc_of_response
-      |> private_info_of_rpc
-      |> pairs_of_private_info
-      |> Lwt.return
+    parse_response res >|= private_info_of_rpc >|= pairs_of_private_info
+
+  method get_ticker curr =
+    lwt res = self#command $ Protocol.query_simple curr "ticker" in
+    parse_response res >|= ticker_of_rpc
+
+  method get_tickers =
+    let currs = StringSet.elements self#currs in
+    List.map (fun c -> c, self#get_ticker c) currs
 end

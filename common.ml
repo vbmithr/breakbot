@@ -155,13 +155,13 @@ module Book : BOOK = struct
     let open Z in
         let l, data, r = SMap.split price book in
         (SMap.fold (fun pr (am,_) acc -> acc + am)
-           l (fst (Opt.unopt ~default:(~$0,0L) data)))
+           l (fst (Opt.default (~$0,0L) data)))
 
   let amount_above_or_eq book price =
     let open Z in
         let l, data, r = SMap.split price book in
         (SMap.fold (fun pr (am,_) acc -> acc + am)
-           r (fst (Opt.unopt ~default:(~$0,0L) data)))
+           r (fst (Opt.default (~$0,0L) data)))
 
   (** Gives the quantity that can be arbitraged. This function does
       not check that [bid] and [ask] are really bid resp. ask books *)
@@ -264,24 +264,29 @@ end
 
 module Books = BooksFunctor.Make(Book)
 
-class virtual exchange (name:string) =
-object (self)
-  val mutable books = Books.empty
-  val         mvar  = (Lwt_mvar.create_empty () : exchange Lwt_mvar.t)
+module Exchange = struct
 
-  method name      = name
-  method print     = Printf.printf "Books for exchange %s:\n%!" name;
-    Books.print books
-  method notify    = Lwt_mvar.put mvar (self :> exchange)
-  method get_books = books
-  method get_mvar  = mvar
+  type balances = (string * S.t) list
 
-  method virtual currs     : StringSet.t
-  method virtual base_curr : string
+  class virtual exchange (name:string) =
+  object (self)
+    val mutable books = Books.empty
+    val         mvar  = (Lwt_mvar.create_empty () : exchange Lwt_mvar.t)
 
-  method virtual update    : unit Lwt.t
-  method virtual place_order : Order.kind -> string -> S.t -> S.t ->
-    Rpc.response Lwt.t
-  method virtual withdraw_btc : S.t -> string -> Rpc.response Lwt.t
-  method virtual get_balances : ((string * S.t) list) Lwt.t
+    method name      = name
+    method print     = Printf.printf "Books for exchange %s:\n%!" name;
+      Books.print books
+    method notify    = Lwt_mvar.put mvar (self :> exchange)
+    method get_books = books
+    method get_mvar  = mvar
+
+    method virtual currs     : StringSet.t
+    method virtual base_curr : string
+
+    method virtual update    : unit Lwt.t
+    method virtual place_order : Order.kind -> string -> S.t -> S.t ->
+      unit Lwt.t
+    method virtual withdraw_btc : S.t -> string -> unit Lwt.t
+    method virtual get_balances : balances Lwt.t
+  end
 end

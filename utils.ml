@@ -35,6 +35,44 @@ let i_int i    = fun (i:int) -> ()
 let i_float i  = fun (i:float) -> ()
 let i_string i = fun (i:string) -> ()
 
+module Map = struct
+  module type OrderedType = sig
+    include Map.OrderedType
+  end
+
+  module type S = sig
+    include Map.S
+
+    val of_assocs : (key * 'a) list -> 'a t
+  end
+
+  module Make(Ord: OrderedType) = struct
+    include Map.Make(Ord)
+
+    let of_assocs assocs =
+      List.fold_left (fun acc (k,v) -> add k v acc) empty assocs
+  end
+end
+
+module Set = struct
+  module type OrderedType = sig
+    include Set.OrderedType
+  end
+
+  module type S = sig
+    include Set.S
+
+    val of_list : elt list -> t
+  end
+
+  module Make(Ord: OrderedType) = struct
+    include Set.Make(Ord)
+
+    let of_list l =
+      List.fold_left (fun acc v -> add v acc) empty l
+  end
+end
+
 module IntMap = Map.Make
   (struct
     type t = int
@@ -44,25 +82,12 @@ module Int64Map = Map.Make(Int64)
 module StringMap = Map.Make(String)
 module StringSet = Set.Make(String)
 
-let stringset_of_list l =
-  List.fold_left (fun acc v -> StringSet.add v acc) StringSet.empty l
-
 (* "finally" is a lwt keyword... *)
 let with_finally f f_block =
   try
     let res = f () in f_block (); res
   with e ->
     f_block (); raise e
-
-module Opt = struct
-  exception Unopt_none
-
-  let unopt ?default v =
-    match default, v with
-      | _, Some v    -> v
-      | Some d, None -> d
-      | _            -> raise Unopt_none
-end
 
 module Unix = struct
   include Unix

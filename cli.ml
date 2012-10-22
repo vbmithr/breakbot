@@ -5,7 +5,7 @@ open Cmdliner
 let config = Config.of_file "breakbot.conf"
 let mtgox_key, mtgox_secret = match (List.assoc "mtgox" config) with
   | [key; secret] ->
-    Uuidm.to_bytes (Opt.unopt (Uuidm.of_string key)),
+    Uuidm.to_bytes (Opt.unbox (Uuidm.of_string key)),
     Cohttp.Base64.decode secret
   | _ -> failwith "Syntax error in config file."
 and intersango_key = match (List.assoc "intersango" config) with

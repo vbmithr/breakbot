@@ -10,7 +10,7 @@ let () =
   let config = Config.of_file "breakbot.conf" in
   let mtgox_key, mtgox_secret = match (List.assoc "mtgox" config) with
     | [key; secret] ->
-      Uuidm.to_bytes (Opt.unopt (Uuidm.of_string key)),
+      Uuidm.to_bytes (Opt.unbox (Uuidm.of_string key)),
       Cohttp.Base64.decode secret
     | _ -> failwith "Syntax error in config file."
   and intersango_key = match (List.assoc "intersango" config) with
@@ -18,14 +18,15 @@ let () =
     | _ -> failwith "Syntax error in config file."
   in
   let exchanges =
-    [(new Intersango.intersango intersango_key :> exchange);
-     (new Mtgox.mtgox mtgox_key mtgox_secret   :> exchange)] in
+    [(new Intersango.intersango intersango_key :> Exchange.exchange);
+     (new Mtgox.mtgox mtgox_key mtgox_secret   :> Exchange.exchange)] in
   let mvars = List.map (fun xch -> xch#get_mvar) exchanges in
   let process mvars =
     lwt converters = Ecb.converters in
     let rec process () =
       lwt xch = Lwt.pick (List.map Lwt_mvar.take mvars) in
-      let () = Printf.printf "Exchange %s has just been updated!\n" xch#name in
+      let () = Printf.printf "Exchange %s has just been updated!\n"
+        xch#name in
       let other_xchs = List.filter (fun x -> x != xch) exchanges in
       let arbiter_one x1 x2 =
         let () = Printf.printf "Arbitrage table for: %s <-> %s\n%!"

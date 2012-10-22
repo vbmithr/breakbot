@@ -18,6 +18,13 @@ module Currency = struct
     | 3 -> "USD"
     | 4 -> "PLN"
     | _ -> failwith "Currency.of_int"
+
+  let of_string = function
+    | "1" -> "GBP"
+    | "2" -> "EUR"
+    | "3" -> "USD"
+    | "4" -> "PLN"
+    | _ -> failwith "Currency.of_int"
 end
 
 module Parser = struct
@@ -36,8 +43,8 @@ module Parser = struct
           let amount = match Jsonm.decode decoder with
             | `Lexeme (`String am) -> S.of_face_string am
             | _ -> failwith "Intersango probably changed its format" in
-          let kind = Opt.unopt kind in
-          let curr = Opt.unopt curr in
+          let kind = Opt.unbox kind in
+          let curr = Opt.unbox curr in
           let books = Books.update books curr kind price amount in
           parse_orderbook ~curr ~kind books
         | `Lexeme `Ae -> books
@@ -52,7 +59,7 @@ module Parser = struct
     let rec parse_depth ?name acc =
       match Jsonm.decode decoder with
         | `Lexeme (`Name s) -> parse_depth ~name:s acc
-        | `Lexeme (`String s) -> let (name:string) = Opt.unopt name
+        | `Lexeme (`String s) -> let (name:string) = Opt.unbox name
                       in parse_depth ((name, s)::acc)
         | `Lexeme `Ae ->
           let kind = Order.kind_of_string (List.assoc "type" acc) in
@@ -102,17 +109,27 @@ module Parser = struct
     with
       | Rpc.Runtime_error (str, t) ->
         Printf.printf "%s\n" (Jsonrpc.to_string t); exit 1
+
+  type ticker =
+      { last: string; vol:string option; buy:string; sell: string }
+  with rpc
+
+  type tickers = (string * ticker) list with rpc
 end
 
 class intersango api_key =
   let streaming_uri = "db.intersango.com"
   and streaming_port = "1337"
   and api_uri = "https://intersango.com/api/authenticated/v0.1/" in
-  let list_accounts_uri = api_uri ^ "listAccounts.php"
-  and order_uri = api_uri ^ "placeLimitOrder.php"
-  and withdraw_uri = api_uri ^ "createBitcoinWithdrawalRequest.php" in
+  let list_accounts_uri = Uri.of_string $ api_uri ^ "listAccounts.php"
+  and order_uri = Uri.of_string $ api_uri ^ "placeLimitOrder.php"
+  and withdraw_uri = Uri.of_string $
+    api_uri ^ "createBitcoinWithdrawalRequest.php"
+  and ticker_uri = Uri.of_string "https://intersango.com/api/ticker.php" in
+  (* and trades_uri = Uri.of_string "https://intersango.com/api/trades.php" *)
+  (* and depth_uri  = Uri.of_string "https://intersango.com/api/depth.php" in *)
 object (self)
-  inherit exchange "intersango"
+  inherit Exchange.exchange "intersango"
 
   val mutable accounts = Lwt.return []
 
@@ -126,7 +143,7 @@ object (self)
       update (ic, oc)
     in Lwt_io.with_connection_dns streaming_uri streaming_port  update
 
-  method currs = stringset_of_list ["GBP"; "EUR"; "USD"; "PLN"]
+  method currs = StringSet.of_list ["GBP"; "EUR"; "USD"; "PLN"]
 
   method base_curr = "GBP"
 
@@ -143,18 +160,17 @@ object (self)
        "base_account_id", base_account_id;
        "quote_account_id", quote_account_id;
        "type", "fok"] in
-    let uri = Uri.of_string order_uri in
-    lwt ret = CoUnix.Client.post_form ~params uri in
-    let _, body = Opt.unopt ret in
-    lwt body_string = CoUnix.Body.string_of_body body in
-    Lwt.return $ Rpc.success (Rpc.String body_string)
+    lwt resp, body = Lwt.merge_opt $
+      CoUnix.Client.post_form ~params order_uri in
+    lwt body = CoUnix.Body.string_of_body body in
+    Printf.printf "%s\n%!" body |> Lwt.return
 
   method get_account_id curr =
-    lwt a =
-      List.find
-        (fun accnt -> accnt.Parser.currency_abbreviation = curr)
-      =|< accounts
-    in Lwt.return (Int64.to_string a.Parser.id)
+    accounts >>=
+      Lwt_list.find_s
+      (fun accnt ->
+        Lwt.return (accnt.Parser.currency_abbreviation = curr))
+              >|= (fun a -> Int64.to_string a.Parser.id)
 
   method withdraw_btc amount address =
     lwt account_id = self#get_account_id "BTC" in
@@ -164,22 +180,28 @@ object (self)
        "address", address;
        "account_id", account_id
       ] in
-    let uri = Uri.of_string withdraw_uri in
-    lwt ret = CoUnix.Client.post_form ~params uri in
-    let _, body = Opt.unopt ret in
-    lwt body_string = CoUnix.Body.string_of_body body in
-    Lwt.return $ Rpc.success (Rpc.String body_string)
+    lwt resp, body = Lwt.merge_opt $
+      CoUnix.Client.post_form ~params withdraw_uri in
+    lwt body = CoUnix.Body.string_of_body body in
+    Printf.printf "%s\n%!" body |> Lwt.return
 
   method get_balances =
     accounts >|= List.map (fun ac ->
       Parser.(ac.currency_abbreviation, S.of_face_string ac.balance))
 
+  method get_tickers =
+    lwt resp, body = Lwt.merge_opt $ CoUnix.Client.get ticker_uri in
+    lwt body = CoUnix.Body.string_of_body body in
+    Jsonrpc.of_string_filter_null body
+    |> Parser.tickers_of_rpc
+    |> List.map (fun (c,v) -> Currency.of_string c, v)
+    |> Lwt.return
+
   initializer
     accounts <-
-      lwt ret = CoUnix.Client.post_form
+      lwt resp, body = Lwt.merge_opt $ CoUnix.Client.post_form
         ~params:(Cohttp.Header.init_with "api_key" api_key)
-        (Uri.of_string list_accounts_uri) in
-      let (_:CoUnix.Response.t),body = Opt.unopt ret in
-      lwt body_str = CoUnix.Body.string_of_body body in
-      Lwt.return (Parser.parse_accounts body_str)
+        list_accounts_uri in
+      lwt body = CoUnix.Body.string_of_body body in
+      Lwt.return (Parser.parse_accounts body)
 end

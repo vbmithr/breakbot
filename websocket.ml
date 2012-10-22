@@ -96,8 +96,8 @@ let with_websocket uri_string f =
   (* Initialisation *)
   lwt myhostname = Lwt_unix.gethostname () in
   let uri = Uri.of_string uri_string in
-  let host = Opt.unopt (Uri.host uri) in
-  let port = Opt.unopt ~default:80 (Uri.port uri) in
+  let host = Opt.unbox (Uri.host uri) in
+  let port = Opt.default 80 (Uri.port uri) in
 
   let buf_in = Sharedbuf.empty ()
   and buf_out = Sharedbuf.empty () in
@@ -117,10 +117,7 @@ let with_websocket uri_string f =
     lwt ic, oc, sockfd = Lwt_io.open_connection_dns host (string_of_int port) in
     let () = Lwt_unix.setsockopt sockfd Lwt_unix.TCP_NODELAY true in
     lwt () = Client.write_request req oc in
-    lwt res = Client.read_response ic oc in
-    let response, _ =
-      try Opt.unopt res
-      with Opt.Unopt_none -> raise (Response_failure Response_empty) in
+    lwt response, _ = Lwt.merge_opt $ Client.read_response ic oc in
     let () = check_response_is_conform response nonce64 in
     let () = Printf.printf "(Re)connected to %s\n%!" uri_string in
     Lwt.return (ic, oc)
