@@ -299,7 +299,7 @@ object (self)
       main_loop () in
     Websocket.with_websocket "http://websocket.mtgox.com/mtgox" update
 
-  method private command ?(async=true) query =
+  method command ?(async=true) query =
     let query_json = Jsonrpc.to_string $ rpc_of_query query in
     let signed_query = CK.hash_string (CK.MAC.hmac_sha512 secret) query_json in
     let signed_request64 = Cohttp.Base64.encode

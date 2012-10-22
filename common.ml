@@ -268,13 +268,12 @@ module Books = BooksFunctor.Make(Book)
 class virtual exchange (name:string) =
 object (self)
   val mutable books = Books.empty
-  val          mvar = Lwt_mvar.create_empty ()
+  val          mvar = (Lwt_mvar.create_empty () : exchange Lwt_mvar.t)
 
   method name      = name
   method print     = Printf.printf "Books for exchange %s:\n%!" name;
     Books.print books
-  method notify    = Lwt_mvar.put mvar self
-
+  method notify    = Lwt_mvar.put mvar (self :> exchange)
   method get_books = books
   method get_mvar  = mvar
 
