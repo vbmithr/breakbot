@@ -141,9 +141,15 @@ object (self)
       let () = books <- Parser.parse_jsonm books decoder in
       lwt () = self#notify in
       update (ic, oc)
-    in Lwt_io.with_connection_dns streaming_uri streaming_port  update
+    in try_lwt
+         Lwt_io.with_connection_dns streaming_uri streaming_port update
+      with Not_found ->
+        let () = Printf.printf
+          "Intersango#update failed. Retrying in 60 seconds.\n%!" in
+        lwt () = Lwt_unix.sleep 60.0 in self#update
 
-  method currs = StringSet.of_list ["GBP"; "EUR"; "USD"; "PLN"]
+
+  method currs = StringSet.of_list ["GBP"; "EUR"; "PLN"]
 
   method base_curr = "GBP"
 

@@ -23,8 +23,6 @@ module Lwt_io = struct
                         (* AI_FAMILY(PF_INET6);  *)
                         AI_SOCKTYPE(SOCK_STREAM)]
 
-  exception Resolv_error
-
   let open_connection ?buffer_size sockaddr =
     let fd = Lwt_unix.socket (Unix.domain_of_sockaddr sockaddr) Unix.SOCK_STREAM 0 in
     let close = lazy begin
@@ -50,17 +48,18 @@ module Lwt_io = struct
       lwt () = Lwt_unix.close fd in
       raise_lwt exn
 
-
   let with_connection_dns node service f =
     lwt addr_infos = getaddrinfo node service tcp_conn_flags in
-    let addr_info =
-      match addr_infos with h::t -> h | [] -> raise Resolv_error in
+    lwt addr_info =
+      match addr_infos
+      with h::t -> Lwt.return h | [] -> raise_lwt Not_found in
     Lwt_io.with_connection addr_info.ai_addr f
 
   let open_connection_dns node service =
     lwt addr_infos = getaddrinfo node service tcp_conn_flags in
-    let addr_info =
-      match addr_infos with h::t -> h | [] -> raise Resolv_error in
+    lwt addr_info =
+      match addr_infos
+      with h::t -> Lwt.return h | [] -> raise_lwt Not_found in
     open_connection addr_info.ai_addr
 end
 
