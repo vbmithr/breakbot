@@ -1,5 +1,6 @@
 external (|>) : 'a -> ('a -> 'b) -> 'b = "%revapply"
 external ($)  : ('a -> 'b) -> 'a -> 'b = "%apply"
+let (++) f g x = f (g x)
 let (|)        = (lor)
 let (&)        = (land)
 
@@ -115,6 +116,18 @@ module String = struct
 
   let is_float str =
     try let (_:float) = float_of_string str in true with _ -> false
+
+  let of_file fname =
+    let ic = open_in fname in
+    let ic_len = in_channel_length ic in
+    let buf = String.create ic_len in
+    let rec input_forever len pos =
+      if len = 0 then buf
+      else let read = input ic buf pos len
+           in input_forever (len-read) (pos+read) in
+    with_finally
+      (fun () -> input_forever ic_len 0)
+      (fun () -> close_in ic)
 
   module BE = struct
     let of_int32 int32 =

@@ -1,18 +1,8 @@
 (** Access configuration file *)
+open Utils
 
-let of_file filename =
-  let config_json = Yojson.Safe.from_file filename in
-  match config_json with
-    | `Assoc l ->
-      (List.map (fun (id, params) ->
-        match params with
-          | `List p ->
-            id, (match params with
-              | `List p -> List.map
-                (function
-                | `String str -> str
-                | _ -> failwith "Config.of_file") p
-              | _ -> failwith "Config.of_file")
-          | _ -> failwith "Config.of_file")
-         l)
-    | _ -> failwith "Config.of_file"
+type config = (string * (string list)) list with rpc
+
+let of_file fname =
+  let str = String.of_file fname in
+  config_of_rpc $ Jsonrpc.of_string str
