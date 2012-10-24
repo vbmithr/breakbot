@@ -91,6 +91,15 @@ module Protocol = struct
         sell       : currency_info
       } with rpc
 
+  let common_ticker_of_ticker t =
+    Ticker.make
+      ~bid:(S.of_dollar_string t.buy.value_int)
+      ~ask:(S.of_dollar_string t.sell.value_int)
+      ~high:(S.of_dollar_string t.high.value_int)
+      ~low:(S.of_dollar_string t.low.value_int)
+      ~vol:(S.of_dollar_string t.vol.value_int)
+      ~last:(S.of_dollar_string t.last.value_int) ()
+
   type wallet =
       {
         balance                : currency_info;
@@ -360,5 +369,7 @@ object (self)
 
   method get_tickers =
     let currs = StringSet.elements self#currs in
-    List.map (fun c -> c, self#get_ticker c) currs
+    Lwt_list.map_p (fun c ->
+      self#get_ticker c >|= Protocol.common_ticker_of_ticker
+                         >|= fun t -> c,t) currs
 end

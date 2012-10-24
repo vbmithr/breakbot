@@ -24,7 +24,11 @@ module Cent = functor (R : (sig val value: float end)) -> struct
   let to_face_string v = string_of_float (to_face_float v)
 end
 
-module S = Cent (struct let value = 1e8 end)
+module S = struct
+  include Cent (struct let value = 1e8 end)
+
+  let of_dollar_string v = of_string v * ~$1000
+end
 
 module SMap = Map.Make(S)
 
@@ -59,6 +63,24 @@ module Order = struct
 
   (** When an exchange fails to send an order *)
   exception Failure of order * string
+end
+
+module Ticker = struct
+  type t =
+    { ts: int64;
+      bid: S.t;
+      ask: S.t;
+      last: S.t;
+      vol: S.t;
+      high: S.t;
+      low: S.t }
+
+  let make ?(ts=Unix.getmicrotime_int64 ())
+      ?(high=Z.minus_one)
+      ?(low=Z.minus_one)
+      ?(vol=Z.minus_one)
+      ~bid ~ask ~last () =
+    { ts; bid; ask; last; vol; high; low }
 end
 
 module type BOOK = sig

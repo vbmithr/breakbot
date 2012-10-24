@@ -115,6 +115,13 @@ module Parser = struct
   with rpc
 
   type tickers = (string * ticker) list with rpc
+
+  let common_ticker_of_ticker t =
+    Ticker.make
+      ?vol:(Opt.map S.of_face_string t.vol)
+      ~bid:(S.of_face_string t.buy)
+      ~ask:(S.of_face_string t.sell)
+      ~last:(S.of_face_string t.last) ()
 end
 
 class intersango api_key =
@@ -200,7 +207,9 @@ object (self)
     lwt body = CoUnix.Body.string_of_body body in
     Jsonrpc.of_string_filter_null body
     |> Parser.tickers_of_rpc
-    |> List.map (fun (c,v) -> Currency.of_string c, v)
+    |> List.map (fun (c,v) ->
+      Currency.of_string c,
+      Parser.common_ticker_of_ticker v)
     |> Lwt.return
 
   initializer
