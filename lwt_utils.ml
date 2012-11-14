@@ -8,10 +8,10 @@ module Lwt = struct
 
   let of_opt = function
     | Some v -> return v
-    | None   -> fail Not_found
+    | None   -> raise_lwt Not_found
 
   let merge_opt m =
-    bind m (function Some v -> return v | None -> fail Not_found)
+    bind m (function Some v -> return v | None -> raise_lwt Not_found)
 end
 
 module Lwt_io = struct

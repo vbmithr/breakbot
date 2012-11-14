@@ -151,7 +151,7 @@ module Protocol = struct
       | Dict ["result", String "error";
               "error", String err;
               "token", String tok] ->
-        Lwt.fail $ Failure (tok ^ ": " ^ err)
+        raise_lwt Failure (tok ^ ": " ^ err)
       | _ -> failwith "sync_result_of_rpc"
 
   let pairs_of_private_info pi =
