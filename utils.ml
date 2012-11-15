@@ -101,13 +101,6 @@ module Unix = struct
   let getmicrotime_str () = Printf.sprintf "%.0f" $ gettimeofday () *. 1e6
 end
 
-module Uint8 = struct
-  type t = int
-
-  let min = 0
-  let max = 255
-end
-
 module String = struct
   include String
 
@@ -128,64 +121,4 @@ module String = struct
     with_finally
       (fun () -> input_forever ic_len 0)
       (fun () -> close_in ic)
-
-  module BE = struct
-    let of_int32 int32 =
-      let open Int32 in
-          let str = String.create 4 in
-          str.[0] <- Char.chr $ (to_int $ int32 lsr 24) land Uint8.max;
-          str.[1] <- Char.chr $ (to_int $ int32 lsr 16) land Uint8.max;
-          str.[2] <- Char.chr $ (to_int $ int32 lsr 8) land Uint8.max;
-          str.[3] <- Char.chr $ to_int int32 land Uint8.max;
-          str
-
-    let read_int16 buf off =
-      Char.code buf.[off] lsl 8 land Char.code buf.[off+1]
-
-    let read_int32 buf off =
-      let (++) = Pervasives.(+) in
-      let open Int32 in
-          let a = (of_int $ Char.code buf.[off]) lsl 24 in
-          let b = (of_int $ Char.code buf.[off++1]) lsl 16 in
-          let c = (of_int $ Char.code buf.[off++2]) lsl 8 in
-          let d = of_int (Char.code buf.[off++3]) in
-          a & b & c & d
-
-    let write_int16 buf off i =
-      buf.[off] <- Char.chr $ (i lsr 8) land Uint8.max;
-      buf.[off+1] <- Char.chr $ i land Uint8.max
-
-    let write_int32 buf off i =
-      let src = of_int32 i in String.blit src 0 buf off 4
-  end
-
-  module LE = struct
-    let of_int32 int32 =
-      let open Int32 in
-          let str = String.create 4 in
-          str.[3] <- Char.chr $ (to_int $ int32 lsr 24) land Uint8.max;
-          str.[2] <- Char.chr $ (to_int $ int32 lsr 16) land Uint8.max;
-          str.[1] <- Char.chr $ (to_int $ int32 lsr 8) land Uint8.max;
-          str.[0] <- Char.chr $ to_int int32 land Uint8.max;
-          str
-
-    let read_int16 buf off =
-      Char.code buf.[off+1] lsl 8 land Char.code buf.[off]
-
-    let read_int32 buf off =
-      let (++) = Pervasives.(+) in
-      let open Int32 in
-          let a = (of_int $ Char.code buf.[off++3]) lsl 24 in
-          let b = (of_int $ Char.code buf.[off++2]) lsl 16 in
-          let c = (of_int $ Char.code buf.[off++1]) lsl 8 in
-          let d = of_int (Char.code buf.[off]) in
-          a & b & c & d
-
-    let write_int16 buf off i =
-      buf.[off+1] <- Char.chr $ (i lsr 8) land Uint8.max;
-      buf.[off] <- Char.chr $ i land Uint8.max
-
-    let write_int32 buf off i =
-      let src = of_int32 i in String.blit src 0 buf off 4
-  end
 end
