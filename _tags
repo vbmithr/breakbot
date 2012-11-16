@@ -9,9 +9,9 @@
         package(lwt),\
         package(lwt.extra),\
         package(lwt.unix),\
-        package(yojson),\
         package(cohttp),\
         package(cohttp.lwt),\
         package(cryptokit),\
         package(uuidm),\
+        package(ANSITerminal),\
         thread, annot

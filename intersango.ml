@@ -88,6 +88,11 @@ module Parser = struct
 
   type error = { error: string } with rpc
 
+  let parse_response str =
+    let open Rpc in match Jsonrpc.of_string_filter_null str with
+      | Dict ["error", String msg] -> raise_lwt Failure msg
+      | obj -> Lwt.return obj
+
   type account =
       {
         id                           : int64;
@@ -173,10 +178,10 @@ object (self)
        "base_account_id", base_account_id;
        "quote_account_id", quote_account_id;
        "type", "fok"] in
-    lwt resp, body = Lwt.merge_opt $
+    lwt resp, body = Lwt.bind_opt $
       CoUnix.Client.post_form ~params order_uri in
     lwt body = CoUnix.Body.string_of_body body in
-    Printf.printf "%s\n%!" body |> Lwt.return
+    Parser.parse_response body
 
   method get_account_id curr =
     accounts >>=
@@ -193,17 +198,17 @@ object (self)
        "address", address;
        "account_id", account_id
       ] in
-    lwt resp, body = Lwt.merge_opt $
+    lwt resp, body = Lwt.bind_opt $
       CoUnix.Client.post_form ~params withdraw_uri in
     lwt body = CoUnix.Body.string_of_body body in
-    Printf.printf "%s\n%!" body |> Lwt.return
+    Parser.parse_response body
 
   method get_balances =
     accounts >|= List.map (fun ac ->
       Parser.(ac.currency_abbreviation, S.of_face_string ac.balance))
 
   method get_tickers =
-    lwt resp, body = Lwt.merge_opt $ CoUnix.Client.get ticker_uri in
+    lwt resp, body = Lwt.bind_opt $ CoUnix.Client.get ticker_uri in
     lwt body = CoUnix.Body.string_of_body body in
     Jsonrpc.of_string_filter_null body
     |> Parser.tickers_of_rpc
@@ -214,7 +219,7 @@ object (self)
 
   initializer
     accounts <-
-      lwt resp, body = Lwt.merge_opt $ CoUnix.Client.post_form
+      lwt resp, body = Lwt.bind_opt $ CoUnix.Client.post_form
         ~params:(Cohttp.Header.init_with "api_key" api_key)
         list_accounts_uri in
       lwt body = CoUnix.Body.string_of_body body in

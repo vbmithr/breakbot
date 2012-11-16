@@ -9,7 +9,7 @@ let url = "http://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml"
 
 let get_rates ?(url=url) () =
   let uri = Uri.of_string url in
-  lwt resp, body = Lwt.merge_opt $ Client.get uri in
+  lwt resp, body = Lwt.bind_opt $ Client.get uri in
   lwt xml = Body.string_of_body body in
   let xml_input = Xmlm.make_input (`String (0, xml)) in
   let rec parse acc input =

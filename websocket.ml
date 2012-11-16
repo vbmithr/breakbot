@@ -117,8 +117,8 @@ let with_websocket uri_string f =
     lwt ic, oc, sockfd = Lwt_io.open_connection_dns host (string_of_int port) in
     let () = Lwt_unix.setsockopt sockfd Lwt_unix.TCP_NODELAY true in
     lwt () = Client.write_request req oc in
-    lwt response, _ = Lwt.merge_opt $ Client.read_response ic oc in
-    let () = check_response_is_conform response nonce64 in
+    lwt response, _ = Lwt.bind_opt $ Client.read_response ic oc in
+    lwt () = Lwt.wrap2 check_response_is_conform response nonce64 in
     let () = Printf.printf "(Re)connected to %s\n%!" uri_string in
     Lwt.return (ic, oc)
   in
@@ -128,8 +128,10 @@ let with_websocket uri_string f =
     lwt () = Lwt_io.read_into_exactly ic hdr 0 2 in
     let final = hdr.[0] > '\127' in
     let opcode = Opcode.of_int (Char.code hdr.[0]) in
-    let () = if hdr.[1] > '\127' then
-        raise (Response_failure Frame_masked) in
+    lwt () = if hdr.[1] > '\127'
+      then raise_lwt (Response_failure Frame_masked)
+      else Lwt.return ()
+    in
     lwt payload_len = match (Char.code hdr.[1]) land 127 with
       | i when i < 126 -> Lwt.return i
       | 126 -> Lwt_io.BE.read_int16 ic
@@ -146,7 +148,7 @@ let with_websocket uri_string f =
             in
             read_payload (n - written)
           else
-            let () = assert (n = 0) in
+            lwt () = assert_lwt (n = 0) in
             if final then
               (* Write a zero length message *)
               lwt (_:int) = Sharedbuf.with_write buf_in (fun buf -> Lwt.return 0)
@@ -161,7 +163,7 @@ let with_websocket uri_string f =
         lwt msg = (Lwt_io.read ~count:payload_len ic) in
         Printf.printf "Operation not supported: Opcode %d, message:\n%s\n%!"
           (Opcode.to_int opcode) msg;
-        raise Operation_not_supported
+        raise_lwt Operation_not_supported
   in
 
   let rec write_frames oc =
@@ -201,7 +203,7 @@ let with_websocket uri_string f =
   in
   let rec run_everything () =
     lwt () = Lwt_unix.sleep 1.0 in (* Do not try to reconnect too fast *)
-    lwt ic,oc = connect () in
+    lwt ic, oc = connect () in
     lwt () = Lwt.pick [read_frames ic;
                        write_frames oc;
                        f (buf_in, buf_out)] in

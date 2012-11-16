@@ -13,6 +13,16 @@ module Jsonrpc = struct
           List.filter (fun (s,v) -> v <> Null) d)
       | oth -> oth
     in filter_null rpc
+
+  let of_string_int_to_float str =
+    let rpc = of_string str in
+    let open Rpc in
+        let rec int_to_float = function
+      | Enum l -> Enum (List.map int_to_float l)
+      | Dict d -> Dict (List.map (fun (s,v) -> s, int_to_float v) d)
+      | Int i -> Float (Int64.to_float i)
+      | oth -> oth
+    in int_to_float rpc
 end
 
 module Cent = functor (R : (sig val value: float end)) -> struct
@@ -307,8 +317,8 @@ module Exchange = struct
 
     method virtual update    : unit Lwt.t
     method virtual place_order : Order.kind -> string -> S.t -> S.t ->
-      unit Lwt.t
-    method virtual withdraw_btc : S.t -> string -> unit Lwt.t
+      Rpc.t Lwt.t
+    method virtual withdraw_btc : S.t -> string -> Rpc.t Lwt.t
     method virtual get_balances : balances Lwt.t
   end
 end

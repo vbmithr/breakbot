@@ -1,77 +1,48 @@
-module YS = Yojson.Safe
-open Cohttp_lwt_unix
+module CoUnix = Cohttp_lwt_unix
 
 open Utils
+open Lwt_utils
 open Common
 
+let url = Uri.of_string "https://btc-e.com/api/2/btc_usd/depth"
 let period = 2.0
-let exchanges = ["btce", "https://btc-e.com/api/2/btc_usd/depth";
-                 "campbx", "http://campbx.com/api/xdepth.php";
-                 "bitstamp", "https://www.bitstamp.net/api/order_book";
-                 "kapiton", "https://kapiton.se/api/0/orderbook";
-                 "bitcurex", "https://pln.bitcurex.com/data/orderbook.json";
-                 "bitme", "https://bitme.com/rest/compat/orderbook/BTCUSD"
-                ]
-let exchanges = List.map (fun (a,b) -> a, Uri.of_string b) exchanges
-let buf = Bi_outbuf.create 4096
 
-let books = Books.empty
-
-module Parser = struct
-  let parse ?buf books body_str =
-    let parse_btce_array kind = function
-      | `List json_list ->
-        List.iter (function
-        | `List [price; amount] ->
-          let price, amount =
-            match price, amount with
-              | `Int price, `Int amount     ->
-                float_of_int price, float_of_int amount
-              | `Int price, `Float amount   -> float_of_int price, amount
-              | `Float price, `Int amount   -> price, float_of_int amount
-              | `Float price, `Float amount -> price, amount
-              | `String price, `String amount ->
-                float_of_string price, float_of_string amount
-              | _ -> failwith "parse_btce_array: Invalid input 2" in
-          Books.add books Currency.USD kind
-            (Satoshi.of_face_float price) (Satoshi.of_face_float amount)
-        | _ -> failwith "parse_btce_array: Invalid input 1"
-        ) json_list
-      | _ -> failwith "parse_btce_array: Invalid input 0"
-    in
-    let body_json =
-      match buf with
-        | None -> YS.from_string body_str
-        | Some buf -> YS.from_string ~buf body_str in
-
-    match body_json with
-      | `Assoc [(kind1, value1); (kind2, value2)] ->
-        let asks, bids =
-          match (Order.kind_of_string kind1), (Order.kind_of_string kind2) with
-            | Order.Ask, Order.Bid -> value1, value2
-            | Order.Bid, Order.Ask -> value2, value1
-            | _                    -> failwith "Parsing: Import format error"
-        in
-        Books.clear books;
-        parse_btce_array Order.Ask asks;
-        parse_btce_array Order.Bid bids
-
-      | _ -> failwith "Parser.parse"
+module Protocol = struct
+  type depth =
+      { asks: (float * float) list;
+        bids: (float * float) list
+      } with rpc
 end
 
-let rec update_depth () =
-  lwt res = Client.get (List.assoc Sys.argv.(1) exchanges) in
-  match res with
-    | None -> let () = Printf.printf "No response!\n%!" in update_depth ()
-    | Some (response, body) ->
-      lwt body_str = Body.string_of_body body in
-      let () = Parser.parse ~buf books body_str in
-      lwt () = Lwt_unix.sleep period in update_depth ()
+class btce key secret =
+object (self)
+  inherit Exchange.exchange "btce"
 
-(* Entry point *)
-let () =
-  Sys.catch_break true;
-  try
-    Lwt_main.run (update_depth ())
-  with Sys.Break ->
-    Books.print books
+  method currs = StringSet.of_list ["USD"]
+  method base_curr = "USD"
+
+  method update =
+    let open Protocol in
+    lwt resp, body = Lwt.bind_opt $ CoUnix.Client.get url in
+    lwt body_str = CoUnix.Body.string_of_body body in
+    let depth = depth_of_rpc $ Jsonrpc.of_string_int_to_float body_str in
+    let ask_book = List.fold_left
+      (fun acc d -> let price_float, amount_float = d in
+                    let price, amount =
+                      (S.of_face_float price_float),
+                      (S.of_face_float amount_float) in
+                    Book.add price amount acc) Book.empty depth.asks
+    and bid_book = List.fold_left
+      (fun acc d -> let price_float, amount_float = d in
+                    let price, amount =
+                      (S.of_face_float price_float),
+                      (S.of_face_float amount_float) in
+                    Book.add price amount acc) Book.empty depth.bids in
+    let () = books <- StringMap.add "USD" (bid_book, ask_book) books in
+    lwt () = self#notify in
+    lwt () = Lwt_unix.sleep period in self#update
+
+  method place_order kind curr price amount = Lwt.return Rpc.Null
+  method withdraw_btc amount curr = Lwt.return Rpc.Null
+  method get_balances = Lwt.return []
+end

@@ -294,7 +294,7 @@ object (self)
       lwt () = Sharedbuf.write_lines buf_out
         [unsubscribe Ticker |> rpc_of_async_message |> Jsonrpc.to_string;
          unsubscribe Trade |> rpc_of_async_message |> Jsonrpc.to_string] in
-      lwt (_:int) = self#command_async (Protocol.query "private/info") in
+      (* lwt (_:int) = self#command_async (Protocol.query "private/info") in *)
       (* lwt (_:int) = self#command_async (Protocol.get_depth) in *)
       (* lwt (_:int) = self#command_async (Protocol.get_currency_info) in *)
 
@@ -332,7 +332,7 @@ object (self)
          item ^ currency
        with Not_found -> "generic")
       ^ "/" ^ (List.assoc "call" query.fields) in
-    lwt resp, body = Lwt.merge_opt $
+    lwt resp, body = Lwt.bind_opt $
       CoUnix.Client.post ~chunked:false ~headers
       ?body:(CoUnix.Body.body_of_string encoded_params) endpoint in
     CoUnix.Body.string_of_body body
@@ -351,13 +351,13 @@ object (self)
                @ S.(if price > ~$0 then
                    ["price_int", to_string $ price / ~$1000] else []))
       "private/order/add" in
-    parse_response res >|= ignore
+    parse_response res
 
   method withdraw_btc amount address =
     lwt res = self#command $ Protocol.query ~async:false
       ~params:["address", address; "amount_int", S.to_string amount]
       "bitcoin/send_simple" in
-    parse_response res >|= ignore
+    parse_response res
 
   method get_balances =
     lwt res = self#command $ Protocol.query ~async:false "private/info" in

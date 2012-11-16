@@ -10,7 +10,7 @@ module Lwt = struct
     | Some v -> return v
     | None   -> raise_lwt Not_found
 
-  let merge_opt m =
+  let bind_opt m =
     bind m (function Some v -> return v | None -> raise_lwt Not_found)
 end
 
