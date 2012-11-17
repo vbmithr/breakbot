@@ -10,12 +10,16 @@ let mtgox_key, mtgox_secret = match (List.assoc "mtgox" config) with
     Uuidm.to_bytes (Opt.unbox (Uuidm.of_string key)),
     Cohttp.Base64.decode secret
   | _ -> failwith "Syntax error in config file."
+and btce_key, btce_secret = match (List.assoc "btce" config) with
+  | [key; secret] -> key, secret
+  | _ -> failwith "Syntax error in config file."
 and intersango_key = match (List.assoc "intersango" config) with
   | [key] -> key
   | _ -> failwith "Syntax error in config file."
 
 let mtgox      = new Mtgox.mtgox mtgox_key mtgox_secret
 let intersango = new Intersango.intersango intersango_key
+let btce = new Btce.btce btce_key btce_secret
 
 let print_balances name pairs =
   Printf.printf "Balances for exchange %s\n" name;
@@ -37,29 +41,33 @@ let main () =
   lwt () = Lwt_unix.sleep 0.5 in
   lwt b_mtgox = mtgox#get_balances
   and b_intersango = intersango#get_balances
+  and b_btce = btce#get_balances
   and t_mtgox = mtgox#get_tickers
-  and t_intersango = intersango#get_tickers in
-  lwt rpc1 =
-    try_lwt mtgox#withdraw_btc Z.(~$1000000) "1FTyBHz1C3nYYkRPhGbdRck4VYaRWkbDM3"
-    with Failure msg -> Printf.printf "withdraw_btc error: %s\n" msg; Lwt.return Rpc.Null
-  in
-  lwt rpc2 =
-    try_lwt intersango#withdraw_btc Z.(~$100000000) "1FTyBHz1C3nYYkRPhGbdRck4VYaRWkbDM3"
-    with Failure msg -> Printf.printf "withdraw_btc error: %s\n" msg; Lwt.return Rpc.Null
-  in
-  lwt rpc3 =
-    try_lwt intersango#place_order Order.Ask "EUR" S.(~$10000000000) S.(~$100000000)
-    with Failure msg -> Printf.printf "place_order error: %s\n" msg; Lwt.return Rpc.Null
-  in
+  and t_intersango = intersango#get_tickers
+  and t_btce = btce#get_tickers in
+  (* lwt rpc1 = *)
+  (*   try_lwt mtgox#withdraw_btc Z.(~$1000000) "1FTyBHz1C3nYYkRPhGbdRck4VYaRWkbDM3" *)
+  (*   with Failure msg -> Printf.printf "withdraw_btc error: %s\n" msg; Lwt.return Rpc.Null *)
+  (* in *)
+  (* lwt rpc2 = *)
+  (*   try_lwt intersango#withdraw_btc Z.(~$100000000) "1FTyBHz1C3nYYkRPhGbdRck4VYaRWkbDM3" *)
+  (*   with Failure msg -> Printf.printf "withdraw_btc error: %s\n" msg; Lwt.return Rpc.Null *)
+  (* in *)
+  (* lwt rpc3 = *)
+  (*   try_lwt intersango#place_order Order.Ask "EUR" S.(~$10000000000) S.(~$100000000) *)
+  (*   with Failure msg -> Printf.printf "place_order error: %s\n" msg; Lwt.return Rpc.Null *)
+  (* in *)
   lwt rpc4 =
-    try_lwt mtgox#place_order Order.Ask "EUR" S.(~$10000000000) S.(~$100000000)
+    try_lwt btce#place_order Order.Ask "EUR" S.(~$10000000000) S.(~$100000000)
     with Failure msg -> Printf.printf "place_order error: %s\n" msg; Lwt.return Rpc.Null
   in
   Printf.printf "%s\n" (Jsonrpc.to_string rpc4);
   print_balances "MtGox" b_mtgox;
   print_balances "Intersango" b_intersango;
+  print_balances "Btce" b_btce;
   print_tickers "MtGox" t_mtgox;
   print_tickers "Intersango" t_intersango;
+  print_tickers "Btce" t_btce;
   Lwt.return ()
 
 let () =

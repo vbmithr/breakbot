@@ -1,5 +1,6 @@
 open Utils
 open Lwt_utils
+open Jsonrpc_utils
 open Common
 
 module CoUnix = Cohttp_lwt_unix
@@ -88,10 +89,9 @@ module Parser = struct
 
   type error = { error: string } with rpc
 
-  let parse_response str =
-    let open Rpc in match Jsonrpc.of_string_filter_null str with
-      | Dict ["error", String msg] -> raise_lwt Failure msg
-      | obj -> Lwt.return obj
+  let parse_response rpc = let open Rpc in match rpc with
+    | Dict ["error", String msg] -> raise_lwt Failure msg
+    | obj -> Lwt.return obj
 
   type account =
       {
@@ -180,8 +180,10 @@ object (self)
        "type", "fok"] in
     lwt resp, body = Lwt.bind_opt $
       CoUnix.Client.post_form ~params order_uri in
-    lwt body = CoUnix.Body.string_of_body body in
-    Parser.parse_response body
+    lwt body_str = CoUnix.Body.string_of_body body in
+    let rpc = Jsonrpc.of_string body_str in
+    let rpc_filter_null = Rpc.filter_null rpc in
+    Parser.parse_response rpc_filter_null
 
   method get_account_id curr =
     accounts >>=
@@ -200,22 +202,21 @@ object (self)
       ] in
     lwt resp, body = Lwt.bind_opt $
       CoUnix.Client.post_form ~params withdraw_uri in
-    lwt body = CoUnix.Body.string_of_body body in
-    Parser.parse_response body
+    lwt body_str = CoUnix.Body.string_of_body body in
+    let rpc = Jsonrpc.of_string body_str in
+    let rpc_filter_null = Rpc.filter_null rpc in
+    Parser.parse_response rpc_filter_null
 
   method get_balances =
     accounts >|= List.map (fun ac ->
       Parser.(ac.currency_abbreviation, S.of_face_string ac.balance))
 
   method get_tickers =
-    lwt resp, body = Lwt.bind_opt $ CoUnix.Client.get ticker_uri in
-    lwt body = CoUnix.Body.string_of_body body in
-    Jsonrpc.of_string_filter_null body
-    |> Parser.tickers_of_rpc
-    |> List.map (fun (c,v) ->
-      Currency.of_string c,
-      Parser.common_ticker_of_ticker v)
-    |> Lwt.return
+    lwt rpc = Jsonrpc.get_filter_null ticker_uri in
+    let tickers = Parser.tickers_of_rpc rpc in
+    Lwt.wrap2 List.map
+      (fun (c,v) -> Currency.of_string c,
+        Parser.common_ticker_of_ticker v) tickers
 
   initializer
     accounts <-

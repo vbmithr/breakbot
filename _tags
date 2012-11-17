@@ -1,9 +1,9 @@
 <**/*.{ml,native,byte}>: syntax(camlp4o),\
         package(cmdliner),\
         package(lwt.syntax),\
-        package(rpc.syntax),\
+        package(rpclib.syntax),\
         package(zarith),\
-        package(rpc),\
+        package(rpclib),\
         package(jsonm),\
         package(xmlm),\
         package(lwt),\

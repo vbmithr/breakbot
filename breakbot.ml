@@ -14,9 +14,7 @@ let () =
       Cohttp.Base64.decode secret
     | _ -> failwith "Syntax error in config file."
   and btce_key, btce_secret = match (List.assoc "btce" config) with
-    | [key; secret] ->
-      key,
-      Cryptokit.transform_string (Cryptokit.Hexa.decode ()) secret
+    | [key; secret] -> key, secret
     | _ -> failwith "Syntax error in config file."
   and intersango_key = match (List.assoc "intersango" config) with
     | [key] -> key

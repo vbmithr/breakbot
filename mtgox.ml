@@ -1,5 +1,6 @@
 open Utils
 open Lwt_utils
+open Jsonrpc_utils
 open Common
 
 module CoUnix = Cohttp_lwt_unix
@@ -145,14 +146,13 @@ module Protocol = struct
            "trade_fee" -> "Trade_Fee",
            "wallets" -> "Wallets")
 
-  let parse_response str =
-    let open Rpc in match Jsonrpc.of_string_filter_null str with
-      | Dict ["result", String "success"; "return", obj] -> Lwt.return obj
-      | Dict ["result", String "error";
-              "error", String err;
-              "token", String tok] ->
-        raise_lwt Failure (tok ^ ": " ^ err)
-      | _ -> failwith "sync_result_of_rpc"
+  let parse_response rpc = let open Rpc in match rpc with
+    | Dict ["result", String "success"; "return", obj] -> Lwt.return obj
+    | Dict ["result", String "error";
+            "error", String err;
+            "token", String tok] ->
+      raise_lwt Failure (tok ^ ": " ^ err)
+    | _ -> raise_lwt (Failure "sync_result_of_rpc")
 
   let pairs_of_private_info pi =
     List.map (fun (_,w) -> pair_of_wallet w) pi.wallets
@@ -318,7 +318,7 @@ object (self)
     let encoded_params = Uri.encoded_of_query $
       List.map (fun (k,v) -> k, [v]) query.params in
     let headers = Cohttp.Header.of_list
-      ["User-Agent", "GoxCLI";
+      ["User-Agent", "Breakbot";
        "Content-Type", "application/x-www-form-urlencoded";
        "Rest-Key", Uuidm.to_string $ Opt.unbox (Uuidm.of_bytes key);
        "Rest-Sign", Cohttp.Base64.encode $
@@ -335,7 +335,7 @@ object (self)
     lwt resp, body = Lwt.bind_opt $
       CoUnix.Client.post ~chunked:false ~headers
       ?body:(CoUnix.Body.body_of_string encoded_params) endpoint in
-    CoUnix.Body.string_of_body body
+    CoUnix.Body.string_of_body body >|= Jsonrpc.of_string
 
   method currs = StringSet.of_list
     ["USD"; "AUD"; "CAD"; "CHF"; "CNY"; "DKK"; "EUR"; "GBP";
@@ -344,28 +344,34 @@ object (self)
   method base_curr = "USD"
 
   method place_order kind curr price amount =
-    lwt res = self#command $ Protocol.query ~async:false
+    lwt rpc = self#command $ Protocol.query ~async:false
       ~optfields:["item","BTC"; "currency", curr]
       ~params:(["type", Order.string_of_kind kind;
                 "amount_int", S.to_string amount]
                @ S.(if price > ~$0 then
                    ["price_int", to_string $ price / ~$1000] else []))
       "private/order/add" in
-    parse_response res
+    let rpc_null_filtered = Rpc.filter_null rpc in
+    parse_response rpc_null_filtered
 
   method withdraw_btc amount address =
-    lwt res = self#command $ Protocol.query ~async:false
+    lwt rpc = self#command $ Protocol.query ~async:false
       ~params:["address", address; "amount_int", S.to_string amount]
       "bitcoin/send_simple" in
-    parse_response res
+    let rpc_null_filtered = Rpc.filter_null rpc in
+    parse_response rpc_null_filtered
+
 
   method get_balances =
-    lwt res = self#command $ Protocol.query ~async:false "private/info" in
-    parse_response res >|= private_info_of_rpc >|= pairs_of_private_info
+    lwt rpc = self#command $ Protocol.query ~async:false "private/info" in
+    let rpc_null_filtered = Rpc.filter_null rpc in
+    parse_response rpc_null_filtered
+    >|= private_info_of_rpc >|= pairs_of_private_info
 
   method get_ticker curr =
-    lwt res = self#command $ Protocol.query_simple curr "ticker" in
-    parse_response res >|= ticker_of_rpc
+    lwt rpc = self#command $ Protocol.query_simple curr "ticker" in
+    let rpc_null_filtered = Rpc.filter_null rpc in
+    parse_response rpc_null_filtered >|= ticker_of_rpc
 
   method get_tickers =
     let currs = StringSet.elements self#currs in
