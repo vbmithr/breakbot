@@ -16,14 +16,15 @@ let () =
   and btce_key, btce_secret = match (List.assoc "btce" config) with
     | [key; secret] -> key, secret
     | _ -> failwith "Syntax error in config file."
-  and intersango_key = match (List.assoc "intersango" config) with
-    | [key] -> key
+  and bs_login, bs_passwd = match (List.assoc "bitstamp" config) with
+    | [login; passwd] -> login, passwd
     | _ -> failwith "Syntax error in config file."
   in
   let exchanges =
-    [(new Intersango.intersango intersango_key :> Exchange.exchange);
-     (new Mtgox.mtgox mtgox_key mtgox_secret   :> Exchange.exchange);
-     (new Btce.btce btce_key btce_secret       :> Exchange.exchange)] in
+    [(new Mtgox.mtgox mtgox_key mtgox_secret   :> Exchange.exchange);
+     (new Btce.btce btce_key btce_secret       :> Exchange.exchange);
+     (new Bitstamp.bitstamp bs_login bs_passwd :> Exchange.exchange)
+    ] in
   let mvars = List.map (fun xch -> xch#get_mvar) exchanges in
   let process mvars =
     lwt converters = Ecb.converters in

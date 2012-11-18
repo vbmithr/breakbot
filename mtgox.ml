@@ -294,10 +294,7 @@ object (self)
       lwt () = Sharedbuf.write_lines buf_out
         [unsubscribe Ticker |> rpc_of_async_message |> Jsonrpc.to_string;
          unsubscribe Trade |> rpc_of_async_message |> Jsonrpc.to_string] in
-      (* lwt (_:int) = self#command_async (Protocol.query "private/info") in *)
-      (* lwt (_:int) = self#command_async (Protocol.get_depth) in *)
-      (* lwt (_:int) = self#command_async (Protocol.get_currency_info) in *)
-
+      lwt (_:int) = self#command_async (Protocol.query_simple "USD" "depth") in
       main_loop () in
     Websocket.with_websocket "http://websocket.mtgox.com/mtgox" update
 
@@ -338,8 +335,7 @@ object (self)
     CoUnix.Body.string_of_body body >|= Jsonrpc.of_string
 
   method currs = StringSet.of_list
-    ["USD"; "AUD"; "CAD"; "CHF"; "CNY"; "DKK"; "EUR"; "GBP";
-     "HKD"; "JPY"; "NZD"; "PLN"; "RUB"; "SEK"; "SGD"; "THB"]
+    ["USD"]
 
   method base_curr = "USD"
 
@@ -360,7 +356,6 @@ object (self)
       "bitcoin/send_simple" in
     let rpc_null_filtered = Rpc.filter_null rpc in
     parse_response rpc_null_filtered
-
 
   method get_balances =
     lwt rpc = self#command $ Protocol.query ~async:false "private/info" in

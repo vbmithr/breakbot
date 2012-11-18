@@ -51,10 +51,10 @@ let main () =
   and b_bitstamp = bitstamp#get_balances
   and t_bitstamp = bitstamp#get_tickers
   in
-  lwt rpc1 =
-    try_lwt bitstamp#withdraw_btc Z.(~$0) "1FTyBHz1C3nYYkRPhGbdRck4VYaRWkbDM3"
-    with Failure msg -> Printf.printf "withdraw_btc error: %s\n" msg; Lwt.return Rpc.Null
-  in
+  (* lwt rpc1 = *)
+  (*   try_lwt bitstamp#withdraw_btc Z.(~$0) "1FTyBHz1C3nYYkRPhGbdRck4VYaRWkbDM3" *)
+  (*   with Failure msg -> Printf.printf "withdraw_btc error: %s\n" msg; Lwt.return Rpc.Null *)
+  (* in *)
   (* lwt rpc2 = *)
   (*   try_lwt intersango#withdraw_btc Z.(~$100000000) "1FTyBHz1C3nYYkRPhGbdRck4VYaRWkbDM3" *)
   (*   with Failure msg -> Printf.printf "withdraw_btc error: %s\n" msg; Lwt.return Rpc.Null *)
@@ -67,7 +67,7 @@ let main () =
   (*   try_lwt bitstamp#command "balance" [] *)
   (*   with Failure msg -> Printf.printf "place_order error: %s\n" msg; Lwt.return Rpc.Null *)
   (* in *)
-  Printf.printf "%s\n" (Jsonrpc.to_string rpc1);
+  (* Printf.printf "%s\n" (Jsonrpc.to_string rpc1); *)
   print_balances "MtGox" b_mtgox;
   print_balances "Intersango" b_intersango;
   print_balances "Btce" b_btce;

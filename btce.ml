@@ -88,7 +88,7 @@ class btce key secret =
 object (self)
   inherit Exchange.exchange "btce"
 
-  method currs = StringSet.of_list ["USD"; "EUR"; "RUB"]
+  method currs = StringSet.of_list ["USD"]
   method base_curr = "USD"
 
   method update =
