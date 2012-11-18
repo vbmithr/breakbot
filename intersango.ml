@@ -166,9 +166,10 @@ object (self)
         lwt () = Lwt_unix.sleep 60.0 in self#update
 
 
-  method currs = StringSet.of_list ["GBP"; "EUR"; "PLN"]
+  method currs = StringSet.of_list ["EUR"; "PLN"]
 
-  method base_curr = "GBP"
+  method base_curr = "EUR"
+  method fees = 7
 
   method get_accounts =
     if accounts = Lwt.return [] then

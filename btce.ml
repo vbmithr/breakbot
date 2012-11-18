@@ -91,6 +91,8 @@ object (self)
   method currs = StringSet.of_list ["USD"]
   method base_curr = "USD"
 
+  method fees = 2
+
   method update =
     let open Protocol in
     lwt rpc = Jsonrpc.get_int_to_float $ Protocol.make_get_url "USD" "depth" in

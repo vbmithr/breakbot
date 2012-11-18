@@ -13,15 +13,11 @@ let mtgox_key, mtgox_secret = match (List.assoc "mtgox" config) with
 and btce_key, btce_secret = match (List.assoc "btce" config) with
   | [key; secret] -> key, secret
   | _ -> failwith "Syntax error in config file."
-and intersango_key = match (List.assoc "intersango" config) with
-  | [key] -> key
-  | _ -> failwith "Syntax error in config file."
 and bitstamp_login, bitstamp_passwd = match (List.assoc "bitstamp" config) with
   | [login; passwd] -> login, passwd
   | _ -> failwith "Syntax error in config file."
 
 let mtgox      = new Mtgox.mtgox mtgox_key mtgox_secret
-let intersango = new Intersango.intersango intersango_key
 let btce       = new Btce.btce btce_key btce_secret
 let bitstamp   = new Bitstamp.bitstamp bitstamp_login bitstamp_passwd
 
@@ -43,10 +39,8 @@ let print_tickers name tickers =
 
 let main () =
   lwt b_mtgox = mtgox#get_balances
-  and b_intersango = intersango#get_balances
   and b_btce = btce#get_balances
   and t_mtgox = mtgox#get_tickers
-  and t_intersango = intersango#get_tickers
   and t_btce = btce#get_tickers
   and b_bitstamp = bitstamp#get_balances
   and t_bitstamp = bitstamp#get_tickers
@@ -69,11 +63,9 @@ let main () =
   (* in *)
   (* Printf.printf "%s\n" (Jsonrpc.to_string rpc1); *)
   print_balances "MtGox" b_mtgox;
-  print_balances "Intersango" b_intersango;
   print_balances "Btce" b_btce;
   print_balances "Bitstamp" b_bitstamp;
   print_tickers "MtGox" t_mtgox;
-  print_tickers "Intersango" t_intersango;
   print_tickers "Btce" t_btce;
   print_tickers "Bitstamp" t_bitstamp;
   Lwt.return ()

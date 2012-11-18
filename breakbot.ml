@@ -27,7 +27,6 @@ let () =
     ] in
   let mvars = List.map (fun xch -> xch#get_mvar) exchanges in
   let process mvars =
-    lwt converters = Ecb.converters in
     let rec process () =
       lwt xch = Lwt.pick (List.map Lwt_mvar.take mvars) in
       let () = Printf.printf "Exchange %s has just been updated!\n"
@@ -36,24 +35,17 @@ let () =
       let arbiter_one x1 x2 =
         let () = Printf.printf "Arbitrage table for: %s <-> %s\n%!"
           x1#name x2#name in
-        let common_currs = StringSet.inter x1#currs x2#currs in
-        let res =
-          StringSet.fold
-            (fun curr acc ->
-              let ret =
-                try
-                  Books.arbiter_unsafe
-                    curr converters x1#get_books x1#base_curr
-                    x2#get_books x2#base_curr
-                with Not_found -> S.((~$0,~$0),(~$0,~$0))
-              in ((curr, ret)::acc)
-            ) common_currs [] in
-        List.iter (fun (curr, ((qty1,pr1), (qty2,pr2))) ->
-          Printf.printf "%s -> : %f (%f %s)\n%!"
-            curr (S.to_face_float qty1) (S.to_float pr1 /. 1e16) curr;
-          Printf.printf "%s <- : %f (%f %s)\n%!"
-            curr (S.to_face_float qty2) (S.to_float pr2 /. 1e16) curr)
-          res in
+        let (qty1, pr1), (qty2, pr2) =
+          try
+            Books.arbiter_unsafe
+              "USD" x1#get_books x2#get_books x1#fees x2#fees
+          with Not_found -> S.((~$0,~$0),(~$0,~$0)) in
+
+        Printf.printf "-> : %f (%f USD)\n%!"
+          (S.to_face_float qty1) (S.to_float pr1 /. 1e16);
+        Printf.printf "<- : %f (%f USD)\n%!"
+          (S.to_face_float qty2) (S.to_float pr2 /. 1e16)
+      in
       let () = List.iter (fun x -> arbiter_one xch x) other_xchs in
       process ()
     in process ()

@@ -269,6 +269,8 @@ object (self)
   val key               = key
   val buf_json_in       = Buffer.create 4096
 
+  method fees = 6
+
   method update =
     let rec update (bi, bo) =
       buf_in    <- bi;
@@ -294,7 +296,7 @@ object (self)
       lwt () = Sharedbuf.write_lines buf_out
         [unsubscribe Ticker |> rpc_of_async_message |> Jsonrpc.to_string;
          unsubscribe Trade |> rpc_of_async_message |> Jsonrpc.to_string] in
-      lwt (_:int) = self#command_async (Protocol.query_simple "USD" "depth") in
+      (* lwt (_:int) = self#command_async (Protocol.query_simple "USD" "depth") in *)
       main_loop () in
     Websocket.with_websocket "http://websocket.mtgox.com/mtgox" update
 
@@ -334,8 +336,7 @@ object (self)
       ?body:(CoUnix.Body.body_of_string encoded_params) endpoint in
     CoUnix.Body.string_of_body body >|= Jsonrpc.of_string
 
-  method currs = StringSet.of_list
-    ["USD"]
+  method currs = StringSet.of_list ["USD"]
 
   method base_curr = "USD"
 
