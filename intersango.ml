@@ -108,6 +108,11 @@ module Parser = struct
 
   type account_list = account list with rpc
 
+  let account_id_of_curr accs curr =
+    let curr_int = Currency.to_int curr in
+    let account = List.find (fun acc -> acc.currency_id = curr_int) accs in
+    account.id
+
   let rec parse_accounts accounts_str =
     try
       account_list_of_rpc (Jsonrpc.of_string accounts_str)
@@ -165,9 +170,21 @@ object (self)
 
   method base_curr = "GBP"
 
+  method get_accounts =
+    if accounts = Lwt.return [] then
+      (accounts <-
+         (lwt resp, body = Lwt.bind_opt $ CoUnix.Client.post_form
+            ~params:(Cohttp.Header.init_with "api_key" api_key)
+            list_accounts_uri in
+          lwt body_str = CoUnix.Body.string_of_body body in
+          Lwt.wrap (fun () -> Parser.parse_accounts body_str));
+       accounts)
+    else accounts
+
   method place_order kind curr price amount =
-    lwt base_account_id = self#get_account_id "BTC"
-    and quote_account_id = self#get_account_id curr in
+    lwt accounts = self#get_accounts in
+    let base_account_id = Parser.account_id_of_curr accounts "BTC"
+    and quote_account_id = Parser.account_id_of_curr accounts curr in
     let params = Cohttp.Header.of_list
       ["api_key", api_key;
        "quantity", S.to_face_string amount;
@@ -175,8 +192,8 @@ object (self)
        "selling", (match kind with
          | Order.Ask -> "true"
          | Order.Bid -> "false");
-       "base_account_id", base_account_id;
-       "quote_account_id", quote_account_id;
+       "base_account_id", Int64.to_string base_account_id;
+       "quote_account_id", Int64.to_string quote_account_id;
        "type", "fok"] in
     lwt resp, body = Lwt.bind_opt $
       CoUnix.Client.post_form ~params order_uri in
@@ -185,20 +202,14 @@ object (self)
     let rpc_filter_null = Rpc.filter_null rpc in
     Parser.parse_response rpc_filter_null
 
-  method get_account_id curr =
-    accounts >>=
-      Lwt_list.find_s
-      (fun accnt ->
-        Lwt.return (accnt.Parser.currency_abbreviation = curr))
-              >|= (fun a -> Int64.to_string a.Parser.id)
-
   method withdraw_btc amount address =
-    lwt account_id = self#get_account_id "BTC" in
+    lwt accounts = self#get_accounts in
+    let account_id = Parser.account_id_of_curr accounts "BTC" in
     let params = Cohttp.Header.of_list
       ["api_key", api_key;
        "amount", S.to_face_string amount;
        "address", address;
-       "account_id", account_id
+       "account_id", Int64.to_string account_id
       ] in
     lwt resp, body = Lwt.bind_opt $
       CoUnix.Client.post_form ~params withdraw_uri in
@@ -208,7 +219,7 @@ object (self)
     Parser.parse_response rpc_filter_null
 
   method get_balances =
-    accounts >|= List.map (fun ac ->
+    self#get_accounts >|= List.map (fun ac ->
       Parser.(ac.currency_abbreviation, S.of_face_string ac.balance))
 
   method get_tickers =
@@ -217,12 +228,4 @@ object (self)
     Lwt.wrap2 List.map
       (fun (c,v) -> Currency.of_string c,
         Parser.common_ticker_of_ticker v) tickers
-
-  initializer
-    accounts <-
-      lwt resp, body = Lwt.bind_opt $ CoUnix.Client.post_form
-        ~params:(Cohttp.Header.init_with "api_key" api_key)
-        list_accounts_uri in
-      lwt body = CoUnix.Body.string_of_body body in
-      Lwt.return (Parser.parse_accounts body)
 end

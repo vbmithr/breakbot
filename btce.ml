@@ -44,8 +44,8 @@ module Protocol = struct
   let common_ticker_of_ticker t =
     Ticker.make
       ~ts:(Int64.of_float t.ticker.server_time)
-      ~bid:(S.of_face_float t.ticker.buy)
-      ~ask:(S.of_face_float t.ticker.sell)
+      ~bid:(S.of_face_float t.ticker.sell)
+      ~ask:(S.of_face_float t.ticker.buy)
       ~vol:(S.of_face_float t.ticker.vol_cur)
       ~last:(S.of_face_float t.ticker.last)
       ~high:(S.of_face_float t.ticker.high)
@@ -140,7 +140,7 @@ object (self)
         "amount", S.to_face_string amount
       ]
 
-  method withdraw_btc amount curr = Lwt.return Rpc.Null
+  method withdraw_btc amount address = Lwt.return Rpc.Null
   method get_balances =
     let open Protocol in
     lwt rpc = self#command $ query "getInfo" [] in
