@@ -62,23 +62,27 @@ object (self)
 
   method update =
     let open Protocol in
-    lwt rpc = Jsonrpc.get_int_to_float $ make_uri "order_book" in
-    let depth = depth_of_rpc rpc in
-    let ask_book = List.fold_left
-      (fun acc d -> let price_float, amount_float = d in
-                    let price, amount =
-                      (S.of_face_float price_float),
-                      (S.of_face_float amount_float) in
-                    Book.add price amount acc) Book.empty depth.asks
-    and bid_book = List.fold_left
-      (fun acc d -> let price_float, amount_float = d in
-                    let price, amount =
-                      (S.of_face_float price_float),
-                      (S.of_face_float amount_float) in
-                    Book.add price amount acc) Book.empty depth.bids in
-    let () = books <- StringMap.add "USD" (bid_book, ask_book) books in
-    lwt () = self#notify in
-    lwt () = Lwt_unix.sleep period in self#update
+        lwt () =
+          try_lwt
+            lwt rpc = Jsonrpc.get_int_to_float $ make_uri "order_book" in
+            let depth = depth_of_rpc rpc in
+            let ask_book = List.fold_left
+              (fun acc d -> let price_float, amount_float = d in
+                            let price, amount =
+                              (S.of_face_float price_float),
+                              (S.of_face_float amount_float) in
+                            Book.add price amount acc) Book.empty depth.asks
+            and bid_book = List.fold_left
+              (fun acc d -> let price_float, amount_float = d in
+                          let price, amount =
+                            (S.of_face_float price_float),
+                            (S.of_face_float amount_float) in
+                          Book.add price amount acc) Book.empty depth.bids in
+            let () = books <- StringMap.add "USD" (bid_book, ask_book) books in
+            self#notify
+          with _ -> Lwt.return ()
+          finally Lwt_unix.sleep period
+        in self#update
 
   method command endpoint params =
     let headers = Cohttp.Header.of_list
