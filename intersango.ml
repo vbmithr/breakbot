@@ -169,7 +169,6 @@ object (self)
   method currs = StringSet.of_list ["EUR"; "PLN"]
 
   method base_curr = "EUR"
-  method fees = 7
 
   method get_accounts =
     if accounts = Lwt.return [] then

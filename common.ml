@@ -290,12 +290,12 @@ module Exchange = struct
 
     method virtual currs     : StringSet.t
     method virtual base_curr : string
-    method virtual fees : int
 
     method virtual update    : unit Lwt.t
     method virtual place_order : Order.kind -> string -> S.t -> S.t ->
       Rpc.t Lwt.t
     method virtual withdraw_btc : S.t -> string -> Rpc.t Lwt.t
     method virtual get_balances : balances Lwt.t
+    method virtual get_tickers  : (string * Ticker.t) list Lwt.t
   end
 end

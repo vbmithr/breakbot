@@ -58,8 +58,6 @@ object (self)
   method currs = StringSet.of_list ["USD"]
   method base_curr = "USD"
 
-  method fees = 5
-
   method update =
     let open Protocol in
         lwt () =
@@ -99,12 +97,16 @@ object (self)
       ?body (make_uri endpoint) in
       CoUnix.Body.string_of_body body >|= Jsonrpc.of_string
 
-  method place_order kind _ price amount =
-    lwt rpc =
-      self#command (match kind with Order.Bid -> "buy" | Order.Ask -> "sell")
-        ["price", S.to_face_string price;
-         "amount", S.to_face_string amount]
-    in Lwt.wrap1 Protocol.parse_response rpc
+  method place_order kind curr price amount =
+    if curr <> "USD"
+    then raise_lwt (Failure ("Unsupported currency: " ^ curr))
+    else
+      lwt rpc =
+        self#command
+          (match kind with Order.Bid -> "buy" | Order.Ask -> "sell")
+          ["price", S.to_face_string price;
+           "amount", S.to_face_string amount]
+      in Lwt.wrap1 Protocol.parse_response rpc
 
   method withdraw_btc amount address =
     lwt rpc =

@@ -91,8 +91,6 @@ object (self)
   method currs = StringSet.of_list ["USD"]
   method base_curr = "USD"
 
-  method fees = 2
-
   method update =
     let open Protocol in
         lwt () =

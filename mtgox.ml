@@ -153,7 +153,7 @@ module Protocol = struct
             "error", String err;
             "token", String tok] ->
       raise_lwt Failure (tok ^ ": " ^ err)
-    | _ -> raise_lwt (Failure "sync_result_of_rpc")
+    | _ -> raise_lwt Failure "Unknown mtgox response format"
 
   let pairs_of_private_info pi =
     List.map (fun (_,w) -> pair_of_wallet w) pi.wallets
@@ -245,7 +245,7 @@ module Parser = struct
   let rec parse books json_str =
     if (String.length json_str) > 4096 then (* It is the depths *)
       let decoder = Jsonm.decoder (`String json_str) in
-      Lwt.return (parse_orderbook books decoder)
+      Lwt.wrap2 parse_orderbook books decoder
     else
       try_lwt
         let rpc = Jsonrpc.of_string json_str in
@@ -255,7 +255,7 @@ module Parser = struct
           (Printexc.to_string e);
         (* Automatic parsing failed *)
         let decoder = Jsonm.decoder (`String json_str) in
-        Lwt.return (parse_orderbook books decoder)
+        Lwt.wrap2 parse_orderbook books decoder
 end
 
 open Protocol
@@ -269,8 +269,6 @@ object (self)
 
   val key               = key
   val buf_json_in       = Buffer.create 4096
-
-  method fees = 6
 
   method update =
     let rec update (bi, bo) =
@@ -337,7 +335,7 @@ object (self)
       ?body:(CoUnix.Body.body_of_string encoded_params) endpoint in
     CoUnix.Body.string_of_body body >|= Jsonrpc.of_string
 
-  method currs = StringSet.of_list ["USD"]
+  method currs = StringSet.of_list ["USD"; "EUR"; "GBP"]
 
   method base_curr = "USD"
 

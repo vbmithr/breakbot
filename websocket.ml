@@ -136,7 +136,7 @@ let with_websocket uri_string f =
       | i when i < 126 -> Lwt.return i
       | 126 -> Lwt_io.BE.read_int16 ic
       | 127 -> lwt len = (Lwt_io.BE.read_int64 ic)
-               in Lwt.return (Int64.to_int len)
+               in Lwt.wrap1 Int64.to_int len
       | _ -> failwith "Can never happen." in
     match opcode with
       | Opcode.Frame_text ->

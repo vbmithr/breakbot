@@ -11,7 +11,7 @@ let get_rates ?(url=url) () =
   let uri = Uri.of_string url in
   lwt resp, body = Lwt.bind_opt $ Client.get uri in
   lwt xml = Body.string_of_body body in
-  let xml_input = Xmlm.make_input (`String (0, xml)) in
+  lwt xml_input = Lwt.wrap1 Xmlm.make_input (`String (0, xml)) in
   let rec parse acc input =
     let next = try Some (Xmlm.input input) with _ -> None in
     if next = None then acc else
@@ -21,7 +21,7 @@ let get_rates ?(url=url) () =
           parse ((curr, float_of_string rate)::acc) input
         | _ -> parse acc input
   in
-  Lwt.return (parse [] xml_input)
+  Lwt.wrap2 parse [] xml_input
 
 let get_rates_curr ?(url=url) curr =
   lwt rates = get_rates ~url () in
