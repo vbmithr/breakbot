@@ -33,18 +33,19 @@ let () =
         xch#name in
       let other_xchs = List.filter (fun x -> x != xch) exchanges in
       let arbiter_one x1 x2 =
-        let () = Printf.printf "Arbitrage table for: %s <-> %s\n%!"
-          x1#name x2#name in
-        let (qty1, pr1), (qty2, pr2) =
-          try
-            Books.arbiter_unsafe
-              "USD" x1#get_books x2#get_books x1#fees x2#fees
-          with Not_found -> S.((~$0,~$0),(~$0,~$0)) in
-
-        Printf.printf "-> : %f (%f USD)\n%!"
-          (S.to_face_float qty1) (S.to_float pr1 /. 1e16);
-        Printf.printf "<- : %f (%f USD)\n%!"
-          (S.to_face_float qty2) (S.to_float pr2 /. 1e16)
+        try
+          let sign, gain, pr, am = Books.arbiter_unsafe
+            "USD" x1#get_books x2#get_books in
+          Printf.printf "%s\t%s\t%s: %f (%f USD, ratio %f)\n%!"
+            x1#name
+            (match sign with
+              | 1 -> "->"
+              | 0 -> "<->"
+              | -1 -> "<-"
+              | _ -> failwith "") x2#name
+            (S.to_face_float am) (S.to_float gain /. 1e16)
+            S.(to_float gain /. to_float (pr * am))
+        with Not_found -> ()
       in
       let () = List.iter (fun x -> arbiter_one xch x) other_xchs in
       process ()

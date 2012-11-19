@@ -83,7 +83,7 @@ module type BOOK = sig
   val amount_below_or_eq : value t -> S.t -> S.t
   val amount_above_or_eq : value t -> S.t -> S.t
 
-  val arbiter_unsafe : value t -> value t -> S.t * S.t
+  val arbiter_unsafe : value t -> value t -> S.t * S.t * S.t
 end
 
 (** A book represent the depth for one currency, and one order kind *)
@@ -171,19 +171,32 @@ module Book : BOOK = struct
         (SMap.fold (fun pr (am,_) acc -> acc + am)
            r (fst (Opt.default (~$0,0L) data)))
 
-  (** Gives the quantity that can be arbitraged. This function does
-      not check that [bid] and [ask] are really bid resp. ask books *)
+  let keys_between_or_eq book a b =
+    let open S in
+        SMap.fold (fun pr _ acc ->
+          if geq pr a && leq pr b then pr::acc else acc)
+          book []
+
+  (** Gives the (quantity, amount_to_gain) that can be
+      arbitraged. This function does not check that [bid] and [ask]
+      are really bid resp. ask books *)
   let arbiter_unsafe bid ask =
     let open S in
         let max_bid = fst (max_binding bid)
         and min_ask = fst (min_binding ask) in
         if gt max_bid min_ask then
-          let bid_depth = to_depth bid Order.Bid
-          and ask_depth = to_depth ask Order.Ask in
-          let merged = merge_max bid_depth ask_depth in
-          let qty = min_value merged in qty, buy_price ask qty
+          let bid_keys = keys_between_or_eq bid min_ask max_bid
+          and ask_keys = keys_between_or_eq ask min_ask max_bid in
+          List.fold_left (fun acc pr ->
+            let amount_below = amount_below_or_eq ask pr
+            and amount_above = amount_above_or_eq bid pr in
+            let min_qty = min amount_below amount_above in
+            let buy_pr = buy_price ask min_qty
+            and sell_pr = sell_price bid min_qty in
+            Pervasives.max (sell_pr - buy_pr, pr, min_qty) acc
+          ) (~$0, ~$0, ~$0) $ bid_keys @ ask_keys
         else
-          S.(~$0, ~$0)
+          S.(~$0, ~$0, ~$0)
 
   let diff book1 book2 =
     let open S in
@@ -231,25 +244,17 @@ module BooksFunctor = struct
 
     let remove books curr = StringMap.remove curr books
 
-    let arbiter_unsafe curr books1 books2 fees1 fees2 =
-      let b1, a1 = StringMap.find curr books1
-      and b2, a2 = StringMap.find curr books2 in
-      let qty1, buy_pr1 = (B.arbiter_unsafe b2 a1)
-      and qty2, buy_pr2 = (B.arbiter_unsafe b1 a2) in
-      let buy_pr1, buy_pr2 =
-        S.(buy_pr1 + (buy_pr1 / ~$1000 * of_int fees1)),
-        S.(buy_pr2 + (buy_pr2 / ~$1000 * of_int fees2)) in
-      match S.(sign (qty1 - qty2)) with
-        | 1 ->
-          let sell_pr = B.sell_price b2 qty1 in
-          let sell_pr = S.(sell_pr - (sell_pr / ~$1000 * of_int fees2)) in
-          (qty1, S.(sell_pr - buy_pr1)), (qty2, buy_pr2)
-        | 0 -> S.(~$0, ~$0), S.(~$0, ~$0)
-        | -1 ->
-          let sell_pr = B.sell_price b1 qty2 in
-          let sell_pr = S.(sell_pr - (sell_pr / ~$1000 * of_int fees1)) in
-          (qty1, buy_pr1), (qty2, S.(sell_pr - buy_pr2))
-        | _ -> failwith ""
+    let arbiter_unsafe curr books1 books2 =
+      let open S in
+          let b1, a1 = StringMap.find curr books1
+          and b2, a2 = StringMap.find curr books2 in
+          let gain1, pr1, am1 = (B.arbiter_unsafe b2 a1)
+          and gain2, pr2, am2 = (B.arbiter_unsafe b1 a2) in
+          match sign $ gain1 - gain2 with
+            | 1 -> 1, gain1, pr1, am1
+            | 0 -> 0, ~$0, ~$0, ~$0
+            | -1 -> -1, gain2, pr2, am2
+            | _ -> failwith ""
 
     let print books =
       let print_one book = Book.iter

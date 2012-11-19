@@ -53,7 +53,8 @@ module Protocol = struct
 
   let query_of_rpc = function
     | Rpc.Dict fields ->
-      let fields, params = List.partition (fun(k,v) -> k <> "params") fields in
+      let fields, params = List.partition
+        (fun(k,v) -> k <> "params") fields in
       {
         fields=params_of_rpc $ Rpc.Dict fields;
         params=params_of_rpc $ Rpc.Dict params
@@ -283,7 +284,7 @@ object (self)
             in Lwt.return len
           else
             let buf_str = Buffer.contents buf_json_in in
-            let () = Printf.printf "%s\n%!" buf_str in
+            (* let () = Printf.printf "%s\n%!" buf_str in *)
             lwt new_books = Parser.parse books buf_str in
             let () = books <- new_books in
             (* maybe use reset here ? *)
@@ -296,7 +297,7 @@ object (self)
       lwt () = Sharedbuf.write_lines buf_out
         [unsubscribe Ticker |> rpc_of_async_message |> Jsonrpc.to_string;
          unsubscribe Trade |> rpc_of_async_message |> Jsonrpc.to_string] in
-      (* lwt (_:int) = self#command_async (Protocol.query_simple "USD" "depth") in *)
+      lwt (_:int) = self#command_async (Protocol.query_simple "USD" "depth") in
       main_loop () in
     Websocket.with_websocket "http://websocket.mtgox.com/mtgox" update
 
