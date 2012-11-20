@@ -84,7 +84,7 @@ module Protocol = struct
     | _ -> raise_lwt (Failure "should not happen")
 end
 
-class btce key secret =
+class btce key secret btc_addr =
 object (self)
   inherit Exchange.exchange "btce"
 
@@ -146,7 +146,11 @@ object (self)
         "amount", S.to_face_string amount
       ]
 
-  method withdraw_btc amount address = Lwt.return Rpc.Null
+  method withdraw_btc amount address =
+    raise_lwt Failure "Not supported by the exchange"
+
+  method get_btc_addr = btc_addr
+
   method get_balances =
     let open Protocol in
     lwt rpc = self#command $ query "getInfo" [] in

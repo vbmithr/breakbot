@@ -83,7 +83,7 @@ module type BOOK = sig
   val amount_below_or_eq : value t -> S.t -> S.t
   val amount_above_or_eq : value t -> S.t -> S.t
 
-  val arbiter_unsafe : value t -> value t -> S.t * S.t * S.t
+  val arbiter_unsafe : value t -> value t -> S.t * S.t * S.t * S.t * S.t
 end
 
 (** A book represent the depth for one currency, and one order kind *)
@@ -193,10 +193,11 @@ module Book : BOOK = struct
             let min_qty = min amount_below amount_above in
             let buy_pr = buy_price ask min_qty
             and sell_pr = sell_price bid min_qty in
-            Pervasives.max (sell_pr - buy_pr, pr, min_qty) acc
-          ) (~$0, ~$0, ~$0) $ bid_keys @ ask_keys
+            Pervasives.max
+              (sell_pr - buy_pr, sell_pr, buy_pr, pr, min_qty) acc
+          ) (~$0, ~$0, ~$0, ~$0, ~$0) $ bid_keys @ ask_keys
         else
-          S.(~$0, ~$0, ~$0)
+          S.(~$0, ~$0, ~$0, ~$0, ~$0)
 
   let diff book1 book2 =
     let open S in
@@ -248,12 +249,12 @@ module BooksFunctor = struct
       let open S in
           let b1, a1 = StringMap.find curr books1
           and b2, a2 = StringMap.find curr books2 in
-          let gain1, pr1, am1 = (B.arbiter_unsafe b2 a1)
-          and gain2, pr2, am2 = (B.arbiter_unsafe b1 a2) in
+          let gain1, spr1, bpr1, pr1, am1 = (B.arbiter_unsafe b2 a1)
+          and gain2, spr2, bpr2, pr2, am2 = (B.arbiter_unsafe b1 a2) in
           match sign $ gain1 - gain2 with
-            | 1 -> 1, gain1, pr1, am1
-            | 0 -> 0, ~$0, ~$0, ~$0
-            | -1 -> -1, gain2, pr2, am2
+            | 1 -> 1, gain1, spr1, bpr1, pr1, am1
+            | 0 -> 0, ~$0, ~$0, ~$0, ~$0, ~$0
+            | -1 -> -1, gain2, spr2, bpr2, pr2, am2
             | _ -> failwith ""
 
     let print books =
@@ -295,6 +296,7 @@ module Exchange = struct
     method virtual place_order : Order.kind -> string -> S.t -> S.t ->
       Rpc.t Lwt.t
     method virtual withdraw_btc : S.t -> string -> Rpc.t Lwt.t
+    method virtual get_btc_addr : string
     method virtual get_balances : balances Lwt.t
     method virtual get_tickers  : (string * Ticker.t) list Lwt.t
   end

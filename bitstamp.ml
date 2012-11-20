@@ -51,7 +51,7 @@ module Protocol = struct
     | oth -> oth
 end
 
-class bitstamp login passwd =
+class bitstamp login passwd btc_addr =
 object (self)
   inherit Exchange.exchange "bitstamp"
 
@@ -113,6 +113,8 @@ object (self)
       self#command "bitcoin_withdrawal"
         ["amount", S.to_face_string amount;
          "address", address] in Lwt.wrap1 Protocol.parse_response rpc
+
+  method get_btc_addr = btc_addr
 
   method get_balances =
     let open Protocol in

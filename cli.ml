@@ -3,27 +3,30 @@ open Lwt_utils
 open Common
 
 let config = Config.of_file "breakbot.conf"
-let mtgox_key, mtgox_secret = match (List.assoc "mtgox" config) with
-  | [key; secret] ->
-    Uuidm.to_bytes (Opt.unbox (Uuidm.of_string key)),
-    Cohttp.Base64.decode secret
-  | _ -> failwith "Syntax error in config file."
-and btce_key, btce_secret = match (List.assoc "btce" config) with
-  | [key; secret] -> key, secret
-  | _ -> failwith "Syntax error in config file."
-and bstamp_l, bstamp_p = match (List.assoc "bitstamp" config) with
-  | [login; passwd] -> login, passwd
-  | _ -> failwith "Syntax error in config file."
+let mtgox_key, mtgox_secret, mtgox_addr =
+  match (List.assoc "mtgox" config) with
+    | [key; secret; addr] ->
+      Uuidm.to_bytes (Opt.unbox (Uuidm.of_string key)),
+      Cohttp.Base64.decode secret, addr
+    | _ -> failwith "Syntax error in config file."
+and btce_key, btce_secret, btce_addr =
+  match (List.assoc "btce" config) with
+    | [key; secret; addr] -> key, secret, addr
+    | _ -> failwith "Syntax error in config file."
+and bstamp_l, bstamp_p, bstamp_addr =
+  match (List.assoc "bitstamp" config) with
+    | [login; passwd; addr] -> login, passwd, addr
+    | _ -> failwith "Syntax error in config file."
 
 let exchanges = [
-  "mtgox", (new Mtgox.mtgox mtgox_key mtgox_secret :> Exchange.exchange);
-  "btce", (new Btce.btce btce_key btce_secret :> Exchange.exchange);
-  "bitstamp", (new Bitstamp.bitstamp bstamp_l bstamp_p :> Exchange.exchange)
+  (new Mtgox.mtgox mtgox_key mtgox_secret mtgox_addr :> Exchange.exchange);
+  (new Btce.btce btce_key btce_secret btce_addr :> Exchange.exchange);
+  (new Bitstamp.bitstamp bstamp_l bstamp_p bstamp_addr :> Exchange.exchange)
 ]
 
 let print_balances ?curr xchs =
   lwt balances = Lwt_list.map_p
-    (fun (n, x) -> x#get_balances >|= fun b -> (n, b)) xchs in
+    (fun x -> x#get_balances >|= fun b -> x#name, b) xchs in
   Lwt_list.iter_s (fun (name, balances) ->
     Lwt_list.iter_s (fun (c, b) ->
       let str =
@@ -36,7 +39,7 @@ let print_balances ?curr xchs =
 let print_tickers ?curr xchs =
   let open Ticker in
       lwt tickers = Lwt_list.map_p
-        (fun (n,x) -> x#get_tickers >|= fun t -> (n, t)) xchs in
+        (fun x -> x#get_tickers >|= fun t -> x#name, t) xchs in
       Lwt_list.iter_s (fun (name, tickers) ->
         Lwt_list.iter_s (fun (c, t) ->
           let str =
@@ -52,33 +55,55 @@ let print_tickers ?curr xchs =
 
 let run_print_fun xch curr f =
   let xchs = match xch with
-    | Some name ->
-      (try [List.find (fun (n, x) -> n = name) exchanges]
-      with Not_found -> [])
-    | None -> exchanges in
+    | Some name -> List.filter (fun x -> x#name = name) exchanges
+    | None      -> exchanges in
   if xchs = []
   then `Error (false,
-               Printf.sprintf "Exchange \"%s\" unknown" (Opt.unbox xch))
+               Printf.sprintf "Exchange %s unknown" (Opt.unbox xch))
   else `Ok (f ?curr xchs)
 
 let place_order xch kind curr price amount =
   try_lwt
-    let xch = List.assoc xch exchanges in
+    let xch = List.find (fun x -> x#name = xch) exchanges in
     lwt rpc =
       xch#place_order kind curr
         (S.of_face_float price) (S.of_face_float amount)
     in Lwt_io.printl $ Jsonrpc.to_string rpc
   with
-    | Not_found -> Lwt_io.eprintf "Exchange \"%s\" unknown" xch
+    | Not_found -> Lwt_io.eprintf "Exchange %s unknown\n" xch
+    | Failure msg -> Lwt_io.eprintl msg
+
+let withdraw_btc xch amount address =
+  try_lwt
+    let xch = List.find (fun x -> x#name = xch) exchanges in
+    let address =
+      if address.[0] = '1' then address else
+        let target_xch =
+          try List.find (fun x -> x#name = address) exchanges
+          with Not_found ->
+            failwith (Printf.sprintf "Exchange %s unknown" address) in
+        target_xch#get_btc_addr in
+    lwt rpc =
+      xch#withdraw_btc (S.of_face_float amount) address
+    in Lwt_io.printl $ Jsonrpc.to_string rpc
+  with
+    | Not_found -> Lwt_io.eprintf "Exchange %s unknown\n" xch
     | Failure msg -> Lwt_io.eprintl msg
 
 open Cmdliner
+
+(* Arguments *)
+
+let currency_arg =
+  let doc = "Currency to use, defaults to USD." in
+  Arg.(value & opt string "USD" & info ~doc ~docv:"CURRENCY"
+         ["c";"curr";"currency"])
 
 (* Commands *)
 
 let buy_cmd =
   let exchange_arg =
-    let doc = "Exchange you want a ticker from, defaults to all." in
+    let doc = "Exchange to use." in
     Arg.(required & pos 0 (some string) None & info ~doc [] ~docv:"EXCHANGE")
   and amount_arg =
     let doc = "Amount of BTC." in
@@ -86,9 +111,6 @@ let buy_cmd =
   and price_arg =
     let doc = "Price for 1BTC in currency." in
     Arg.(required & pos 2 (some float) None & info ~doc [] ~docv:"PRICE")
-  and currency_arg =
-    let doc = "Currency used, defaults to USD." in
-    Arg.(value & pos 3 string "USD" & info ~doc [] ~docv:"CURRENCY")
   and doc = "Buy bitcoins." in
   Term.(pure place_order $ exchange_arg $ pure Order.Bid
           $ currency_arg $ price_arg $ amount_arg),
@@ -96,7 +118,7 @@ let buy_cmd =
 
 let sell_cmd =
   let exchange_arg =
-    let doc = "Exchange you want a ticker from, defaults to all." in
+    let doc = "Exchange to use." in
     Arg.(required & pos 0 (some string) None & info ~doc [] ~docv:"EXCHANGE")
   and amount_arg =
     let doc = "Amount of BTC." in
@@ -104,9 +126,6 @@ let sell_cmd =
   and price_arg =
     let doc = "Price for 1BTC in currency." in
     Arg.(required & pos 2 (some float) None & info ~doc [] ~docv:"PRICE")
-  and currency_arg =
-    let doc = "Currency used, defaults to USD." in
-    Arg.(value & pos 3 string "USD" & info ~doc [] ~docv:"CURRENCY")
   and doc = "Sell bitcoins." in
   Term.(pure place_order $ exchange_arg $ pure Order.Ask
           $ currency_arg $ price_arg $ amount_arg),
@@ -137,8 +156,17 @@ let balance_cmd =
   Term.info "balance" ~doc
 
 let withdraw_cmd =
-  let doc = "Withdraw bitcoins" in
-  Term.(pure (Lwt.return ())),
+  let exchange_arg =
+    let doc = "Exchange to use." in
+    Arg.(required & pos 0 (some string) None & info ~doc [] ~docv:"EXCHANGE")
+  and amount_arg =
+    let doc = "Amount of BTC." in
+    Arg.(required & pos 1 (some float) None & info ~doc [] ~docv:"AMOUNT")
+  and addr_arg =
+    let doc = "BTC destination address." in
+    Arg.(required & pos 2 (some string) None & info ~doc [] ~docv:"PRICE")
+  and doc = "Withdraw bitcoins" in
+  Term.(pure withdraw_btc $ exchange_arg $ amount_arg $ addr_arg),
   Term.info "withdraw" ~doc
 
 let move_cmd =
@@ -146,12 +174,19 @@ let move_cmd =
   Term.(pure (Lwt.return ())),
   Term.info "move" ~doc
 
+let exchange_cmd =
+  let doc = "Display available exchanges." in
+  Term.(pure (fun () -> Lwt_list.iter_s
+                (fun x -> Lwt_io.printf "%s\t" x#name)
+                exchanges >>= fun _ -> Lwt_io.print "\n") $ pure ()),
+  Term.info "exchange" ~doc
+
 let default_cmd =
   let doc = "A CLI to interact with bitcoin exchanges." in
   Term.(ret (pure (`Help (`Pager, None)))),
   Term.info "cli" ~version:"0.1" ~doc
 
-let cmds = [buy_cmd; sell_cmd; ticker_cmd;
+let cmds = [exchange_cmd; buy_cmd; sell_cmd; ticker_cmd;
             balance_cmd; withdraw_cmd; move_cmd]
 
 let main = match Term.eval_choice default_cmd cmds with

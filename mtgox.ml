@@ -260,7 +260,7 @@ end
 
 open Protocol
 
-class mtgox key secret =
+class mtgox key secret btc_addr =
 object (self)
   inherit Exchange.exchange "mtgox"
 
@@ -356,6 +356,8 @@ object (self)
       "bitcoin/send_simple" in
     let rpc_null_filtered = Rpc.filter_null rpc in
     parse_response rpc_null_filtered
+
+  method get_btc_addr = btc_addr
 
   method get_balances =
     lwt rpc = self#command $ Protocol.query ~async:false "private/info" in
