@@ -49,7 +49,7 @@ let () =
               | -1 -> "<-"
               | _ -> failwith "") x2#name
             (S.to_face_float am) real_gain
-            S.(real_gain /. to_float (pr * am))
+            S.(real_gain /. (to_float (pr * am) /. 1e16))
         with Not_found -> ()
       in
       let () = List.iter (fun x -> arbiter_one xch x) other_xchs in

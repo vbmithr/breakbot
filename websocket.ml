@@ -114,7 +114,8 @@ let with_websocket uri_string f =
          "Sec-WebSocket-Version" , "13"] in
     let req = Request.make ~headers uri in
     (* lwt ic, oc = Net.connect_uri uri in *)
-    lwt ic, oc, sockfd = Lwt_io.open_connection_dns host (string_of_int port) in
+    lwt ic, oc, sockfd = Lwt_io.open_connection_dns host
+      (string_of_int port) in
     let () = Lwt_unix.setsockopt sockfd Lwt_unix.TCP_NODELAY true in
     lwt () = Client.write_request req oc in
     lwt response, _ = Lwt.bind_opt $ Client.read_response ic oc in
@@ -151,7 +152,8 @@ let with_websocket uri_string f =
             lwt () = assert_lwt (n = 0) in
             if final then
               (* Write a zero length message *)
-              lwt (_:int) = Sharedbuf.with_write buf_in (fun buf -> Lwt.return 0)
+              lwt (_:int) = Sharedbuf.with_write buf_in
+                (fun buf -> Lwt.return 0)
               in Lwt.return ()
             else  (* Normally MtGox sends only final frames *)
               Lwt.return () in
@@ -202,10 +204,9 @@ let with_websocket uri_string f =
 
   in
   let rec run_everything () =
-    lwt () = Lwt_unix.sleep 1.0 in (* Do not try to reconnect too fast *)
-    lwt ic, oc = connect () in
-    lwt () = Lwt.pick [read_frames ic;
-                       write_frames oc;
-                       f (buf_in, buf_out)] in
-    run_everything ()
+    try_lwt
+      lwt () = Lwt_unix.sleep 1.0 in (* Do not try to reconnect too fast *)
+      lwt ic, oc = connect () in
+      Lwt.pick [read_frames ic; write_frames oc; f (buf_in, buf_out)]
+    finally run_everything ()
   in run_everything ()
