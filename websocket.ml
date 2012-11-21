@@ -113,14 +113,13 @@ let with_websocket uri_string f =
          "Sec-WebSocket-Key"     , nonce64;
          "Sec-WebSocket-Version" , "13"] in
     let req = Request.make ~headers uri in
-    (* lwt ic, oc = Net.connect_uri uri in *)
-    lwt ic, oc, sockfd = Lwt_io.open_connection_dns host
-      (string_of_int port) in
-    let () = Lwt_unix.setsockopt sockfd Lwt_unix.TCP_NODELAY true in
+    let sock_fun fd = Lwt_unix.setsockopt fd Lwt_unix.TCP_NODELAY true in
+    lwt ic, oc =
+      Lwt_io.open_connection_dns ~sock_fun host (string_of_int port) in
     lwt () = Client.write_request req oc in
     lwt response, _ = Lwt.bind_opt $ Client.read_response ic oc in
     lwt () = Lwt.wrap2 check_response_is_conform response nonce64 in
-    let () = Printf.printf "(Re)connected to %s\n%!" uri_string in
+    lwt () = Lwt_log.notice_f "(Re)connected to %s\n%!" uri_string in
     Lwt.return (ic, oc)
   in
 
@@ -163,7 +162,8 @@ let with_websocket uri_string f =
 
       | _ ->
         lwt msg = (Lwt_io.read ~count:payload_len ic) in
-        Printf.printf "Operation not supported: Opcode %d, message:\n%s\n%!"
+        Printf.eprintf
+          "Operation not supported: Opcode %d, message:\n%s\n%!"
           (Opcode.to_int opcode) msg;
         raise_lwt Operation_not_supported
   in
@@ -201,12 +201,7 @@ let with_websocket uri_string f =
 
     in
     main_loop ()
-
   in
-  let rec run_everything () =
-    try_lwt
-      lwt () = Lwt_unix.sleep 1.0 in (* Do not try to reconnect too fast *)
-      lwt ic, oc = connect () in
-      Lwt.pick [read_frames ic; write_frames oc; f (buf_in, buf_out)]
-    finally run_everything ()
-  in run_everything ()
+
+  lwt ic, oc = connect () in
+  Lwt.pick [read_frames ic; write_frames oc; f (buf_in, buf_out)]

@@ -295,9 +295,15 @@ object (self)
       lwt () = Sharedbuf.write_lines buf_out
         [unsubscribe Ticker |> rpc_of_async_message |> Jsonrpc.to_string;
          unsubscribe Trade |> rpc_of_async_message |> Jsonrpc.to_string] in
-      lwt (_:int) = self#command_async (Protocol.query_simple "USD" "depth") in
+      (* lwt (_:int) = self#command_async (Protocol.query_simple "USD" "depth") in *)
       main_loop () in
-    Websocket.with_websocket "http://websocket.mtgox.com/mtgox" update
+    try_lwt
+      Websocket.with_websocket "http://websocket.mtgox.com/mtgox" update
+    with exc ->
+      let exc_str = Printexc.to_string exc in
+      Lwt_log.error_f "MtGox websocket error: %s" exc_str
+    finally
+      Lwt_unix.sleep 1.0 >>= fun () -> self#update
 
   method command_async query =
     let query_json = Jsonrpc.to_string $ rpc_of_query query in

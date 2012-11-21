@@ -78,7 +78,9 @@ object (self)
                           Book.add price amount acc) Book.empty depth.bids in
             let () = books <- StringMap.add "USD" (bid_book, ask_book) books in
             self#notify
-          with _ -> Lwt.return ()
+          with exc ->
+            let exc_str = Printexc.to_string exc in
+            Lwt_log.error_f "Bitstamp update error: %s" exc_str
           finally Lwt_unix.sleep period
         in self#update
 
