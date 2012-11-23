@@ -44,13 +44,13 @@ module Map = struct
   module type S = sig
     include Map.S
 
-    val of_assocs : (key * 'a) list -> 'a t
+    val of_bindings : (key * 'a) list -> 'a t
   end
 
   module Make(Ord: OrderedType) = struct
     include Map.Make(Ord)
 
-    let of_assocs assocs =
+    let of_bindings assocs =
       List.fold_left (fun acc (k,v) -> add k v acc) empty assocs
   end
 end

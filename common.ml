@@ -3,6 +3,10 @@ open Utils
 module Cent = functor (R : (sig val value: float end)) -> struct
   include Z
 
+  let rpc_of_t v = Rpc.String (to_bits v)
+  let t_of_rpc = function
+    | Rpc.String v -> of_bits v
+    | _            -> failwith "Cent.t_of_rpc"
   let of_face_float v = of_float (v *. R.value)
   let to_face_float v = to_float v /. R.value
   let of_face_string v = of_float (float_of_string v *. R.value)
@@ -72,6 +76,13 @@ module type BOOK = sig
   include Map.S with type key = S.t
 
   type value = S.t * int64
+  type bindings = (S.t * value) list
+
+  val value_of_rpc : Rpc.t -> value
+  val rpc_of_value : value -> Rpc.t
+
+  val rpc_of_t : value t -> Rpc.t
+  val t_of_rpc : Rpc.t -> value t
 
   val add : ?ts:int64 -> S.t -> S.t -> value t -> value t
   val update : ?ts:int64 -> S.t -> S.t -> value t -> value t
@@ -90,10 +101,11 @@ end
 module Book : BOOK = struct
   include SMap
 
-  type value = S.t * int64
+  type value = S.t * int64 with rpc
+  type bindings = (S.t * value) list with rpc
 
-  let of_bindings bds =
-    List.fold_left (fun acc (k,v) -> SMap.add k v acc) SMap.empty bds
+  let rpc_of_t v = rpc_of_bindings (bindings v)
+  let t_of_rpc rpc = of_bindings (bindings_of_rpc rpc)
 
   let min_value book =
     let open S in
@@ -220,7 +232,15 @@ end
 
 module BooksFunctor = struct
   module Make (B : BOOK) = struct
-    type t = (B.value B.t * B.value B.t) StringMap.t
+    type book = B.value B.t
+    let book_of_rpc = B.t_of_rpc
+    let rpc_of_book = B.rpc_of_t
+
+    type t = (book * book) StringMap.t
+    type bindings = (string * (book * book)) list with rpc
+
+    let rpc_of_t v = rpc_of_bindings (StringMap.bindings v)
+    let t_of_rpc rpc = StringMap.of_bindings (bindings_of_rpc rpc)
 
     let (empty:t) = StringMap.empty
 
@@ -274,7 +294,6 @@ end
 module Books = BooksFunctor.Make(Book)
 
 module Exchange = struct
-
   type balances = (string * S.t) list
 
   class virtual exchange (name:string) =
