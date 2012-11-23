@@ -82,14 +82,10 @@ module type BOOK = sig
 
   val update : S.t -> S.t -> S.t t -> S.t t
 
-  val sum : ?min_v:S.t -> ?max_v:S.t -> S.t t -> S.t
   val buy_price : S.t t -> S.t -> S.t
   val sell_price : S.t t -> S.t -> S.t
 
-  val amount_below_or_eq : S.t t -> S.t -> S.t
-  val amount_above_or_eq : S.t t -> S.t -> S.t
-
-  val arbiter_unsafe : S.t t -> S.t t -> S.t * S.t * S.t * S.t * S.t
+  val arbiter_unsafe : S.t t -> S.t t -> int -> S.t * S.t * S.t * S.t
 end
 
 (** A book represent the depth for one currency, and one order kind *)
@@ -101,106 +97,85 @@ module Book : BOOK = struct
   let rpc_of_t v = rpc_of_bindings (bindings v)
   let t_of_rpc rpc = of_bindings (bindings_of_rpc rpc)
 
-  let min_value book =
-    let open S in
-        SMap.fold (fun _ v acc -> min v acc) book S.(pow ~$2 128)
-
   let update price amount book =
     try
       let old_amount = SMap.find price book in
       SMap.add price S.(old_amount + amount) book
     with Not_found -> SMap.add price amount book
 
-  let sum ?(min_v=S.(-pow ~$2 128)) ?(max_v=S.(pow ~$2 128)) book =
+  let depth_of_ask askbook =
     let open S in
-        SMap.fold
-          (fun pr am acc ->
-            if (geq pr min_v) && (leq pr max_v)
-            then acc + pr*am else acc)
-          book ~$0
+        let _,_,newbook =
+          SMap.fold (fun pr am (depth, price, acc) ->
+            let ndepth = depth + am
+            and nprice = price + pr*am in
+            (ndepth, nprice, SMap.add pr (ndepth, nprice) acc)
+          ) askbook (~$0, ~$0, SMap.empty)
+        in newbook
 
-  let to_depth book = function
-    | Order.Bid ->
-      let open S in
-          let bindings = SMap.bindings book in
-          fst $ List.fold_right (fun (pr,am) (depth, prev_sum) ->
-            SMap.add pr (am + prev_sum) depth, am + prev_sum)
-            bindings (SMap.empty, ~$0)
-
-    | Order.Ask ->
-      let open S in
-          let _, new_book =
-            SMap.fold (fun pr am (prev_sum, acc) ->
-              (prev_sum + am), SMap.add pr (prev_sum + am) acc
-            ) book (~$0,SMap.empty) in
-          new_book
-
-  let merge_max = SMap.merge (fun _ v1 v2 -> match v1, v2 with
-    | Some v1, Some v2 -> Some S.(max v1 v2)
-    | Some v1, None    -> Some v1
-    | None,    Some v2 -> Some v2
-    | None,    None    -> None)
-
-  let buy_price ask_book amount =
+  let depth_of_bid bidbook =
     let open S in
-        fst (SMap.fold (fun pr am (pr_, am_) ->
-          match sign (am_ - am) with
-            | 1 -> (pr_ + pr*am, am_ - am)
-            | 0 -> (pr_ + pr*am, am_ - am)
-            | -1 -> if gt am_ ~$0 then (pr_ + pr*am_, ~$0) else (pr_,am_)
-            | _ -> failwith ""
-        ) ask_book (~$0, amount))
+        let bindings = SMap.bindings bidbook in
+        let _,_,newbook =
+          List.fold_right (fun (pr, am) (depth, price, acc) ->
+            let ndepth = depth + am
+            and nprice = price + pr*am in
+            (ndepth, nprice, SMap.add pr (ndepth, nprice) acc)
+          ) bindings (~$0, ~$0, SMap.empty)
+        in newbook
 
-  let sell_price bid_book amount =
+  let amount_at_price_ask askdepthbook price =
     let open S in
-        let bindings = SMap.bindings bid_book in
-        fst (List.fold_right (fun (pr, am) (pr_,am_) ->
-          match sign (am_ - am) with
-            | 1 -> (pr_ + pr*am, am_ - am)
-            | 0 -> (pr_ + pr*am, am_ - am)
-            | -1 -> if gt am_ ~$0 then (pr_ + pr*am_, ~$0) else (pr_,am_)
-            | _ -> failwith ""
-        ) bindings (~$0, amount))
+        SMap.fold (fun pr (depth, prr) acc ->
+          if pr < price then depth else acc) askdepthbook ~$0
 
-  let amount_below_or_eq book price =
+  let buy_price book qty =
     let open S in
-        let l, data, r = SMap.split price book in
-        (SMap.fold (fun pr am acc -> acc + am)
-           l (Opt.default ~$0 data))
+        let _, price =
+          SMap.fold (fun pr am (qty_rem, price) ->
+            let min_qty = min am qty_rem in
+            (qty_rem - min_qty, price + pr*min_qty)
+          ) book (qty, ~$0)
+        in price
 
-  let amount_above_or_eq book price =
+  let sell_price book qty =
     let open S in
-        let l, data, r = SMap.split price book in
-        (SMap.fold (fun pr am acc -> acc + am)
-           r (Opt.default ~$0 data))
+        let bindings = SMap.bindings book in
+        let _, price =
+          List.fold_right (fun (pr, am) (qty_rem, price) ->
+            let min_qty = min am qty_rem in
+            (qty_rem - min_qty, price + pr*min_qty)
+          ) bindings (qty, ~$0)
+        in price
 
-  let keys_between_or_eq book a b =
+  let arbiter_unsafe bid ask num_iter =
     let open S in
-        SMap.fold (fun pr _ acc ->
-          if geq pr a && leq pr b then pr::acc else acc)
-          book []
-
-  (** Gives the (quantity, amount_to_gain) that can be
-      arbitraged. This function does not check that [bid] and [ask]
-      are really bid resp. ask books *)
-  let arbiter_unsafe bid ask =
-    let open S in
-        let max_bid = fst (max_binding bid)
-        and min_ask = fst (min_binding ask) in
+        let max4 (a,b,c,d) (e,f,g,h) =
+          match sign $ a - e with
+            | 1 -> (a,b,c,d)
+            | 0 -> (a,b,c,d)
+            | -1 -> (e,f,g,h) | _ -> failwith "" in
+        let max_bid = fst $ max_binding bid
+        and min_ask = fst $ min_binding ask in
         if gt max_bid min_ask then
-          let bid_keys = keys_between_or_eq bid min_ask max_bid
-          and ask_keys = keys_between_or_eq ask min_ask max_bid in
-          List.fold_left (fun acc pr ->
-            let amount_below = amount_below_or_eq ask pr
-            and amount_above = amount_above_or_eq bid pr in
-            let min_qty = min amount_below amount_above in
-            let buy_pr = buy_price ask min_qty
-            and sell_pr = sell_price bid min_qty in
-            Pervasives.max
-              (sell_pr - buy_pr, sell_pr, buy_pr, pr, min_qty) acc
-          ) (~$0, ~$0, ~$0, ~$0, ~$0) $ bid_keys @ ask_keys
+          let askdepthbook = depth_of_ask ask in
+          let max_qty = amount_at_price_ask askdepthbook max_bid in
+          let interval = max_qty / (of_int num_iter) in
+          let best_arbitrage = ref (~$0, ~$0, ~$0, ~$0) in
+          for i = 1 to num_iter do
+            let qty = (of_int i) * interval in
+            let sell_pr = sell_price bid qty
+            and buy_pr = buy_price ask qty in
+            best_arbitrage := max4 !best_arbitrage
+              (sell_pr - buy_pr, qty, sell_pr, buy_pr);
+            Printf.printf "%f, %f, %f\n%!"
+              (S.to_face_float qty)
+              (S.to_float sell_pr /. 1e16)
+              (S.to_float buy_pr /. 1e16)
+          done;
+          !best_arbitrage
         else
-          S.(~$0, ~$0, ~$0, ~$0, ~$0)
+          (~$0, ~$0, ~$0, ~$0)
 end
 
 module BooksFunctor = struct
@@ -236,17 +211,14 @@ module BooksFunctor = struct
 
     let remove books curr = StringMap.remove curr books
 
-    let arbiter_unsafe curr books1 books2 =
+    let arbiter_unsafe curr books1 books2 nb_iter =
       let open S in
           let b1, a1 = StringMap.find curr books1
           and b2, a2 = StringMap.find curr books2 in
-          let gain1, spr1, bpr1, pr1, am1 = (B.arbiter_unsafe b2 a1)
-          and gain2, spr2, bpr2, pr2, am2 = (B.arbiter_unsafe b1 a2) in
-          match sign $ gain1 - gain2 with
-            | 1 -> 1, gain1, spr1, bpr1, pr1, am1
-            | 0 -> 0, ~$0, ~$0, ~$0, ~$0, ~$0
-            | -1 -> -1, gain2, spr2, bpr2, pr2, am2
-            | _ -> failwith ""
+          let gain1, qty1, spr1, bpr1 = (B.arbiter_unsafe b2 a1 nb_iter)
+          and gain2, qty2, spr2, bpr2 = (B.arbiter_unsafe b1 a2 nb_iter) in
+          (qty1, spr1, bpr1),
+          (qty2, spr2, bpr2)
 
     let print books =
       let print_one book = Book.iter

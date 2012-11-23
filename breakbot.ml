@@ -6,6 +6,8 @@ open Common
    might block the exchanges from updating... It has thus to be the
    case that processing is indeed faster than receiving+parsing *)
 
+let nb_of_iter = 10
+
 let main () =
   let template = "$(date).$(milliseconds) [$(level)]: $(message)" in
   let std_logger =
@@ -36,27 +38,24 @@ let main () =
     ] in
   let mvars = List.map (fun xch -> xch#get_mvar) exchanges in
   let rec process mvars =
-    lwt xch = Lwt.pick (List.map Lwt_mvar.take mvars) in
+    lwt xch = Lwt.choose (List.map Lwt_mvar.take mvars) in
     let other_xchs = List.filter (fun x -> x != xch) exchanges in
     let arbiter_one x1 x2 =
       try_lwt
-        let sign, gain, spr, bpr, pr, am = Books.arbiter_unsafe
-          "USD" x1#get_books x2#get_books in
-        let real_gain =
+        let (qty1, spr1, bpr1), (qty2, spr2, bpr2) = Books.arbiter_unsafe
+          "USD" x1#get_books x2#get_books nb_of_iter in
+        let real_gain spr bpr =
           ((S.to_float spr *. 0.994 -. S.to_float bpr *. 1.006) /. 1e16) in
-        Lwt_log.notice_f "%s\t%s\t%s: %f (%f USD, ratio %f)\n%!"
-          x1#name
-          (match sign with
-            | 1 -> "->"
-            | 0 -> "<->"
-            | -1 -> "<-"
-            | _ -> failwith "") x2#name
-          (S.to_face_float am) real_gain
-          S.(real_gain /. (to_float (pr * am) /. 1e16))
+        Printf.printf "%s\t -> \t%s: %f (%f USD)\n%!"
+          x1#name x2#name
+          (S.to_face_float qty1) (real_gain spr1 bpr1);
+        Printf.printf "%s\t -> \t%s: %f (%f USD)\n%!"
+          x1#name x2#name
+          (S.to_face_float qty2) (real_gain spr2 bpr2); Lwt.return ()
       with Not_found -> Lwt.return () in
     lwt () = Lwt_list.iter_s (fun x -> arbiter_one xch x) other_xchs in
     process mvars
   in
-  Lwt.pick $ process mvars :: List.map (fun xch -> xch#update) exchanges
+  Lwt.choose $ process mvars :: List.map (fun xch -> xch#update) exchanges
 
 let () = Lwt_main.run $ main ()
