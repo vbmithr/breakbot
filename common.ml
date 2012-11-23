@@ -75,34 +75,28 @@ end
 module type BOOK = sig
   include Map.S with type key = S.t
 
-  type value = S.t * int64
-  type bindings = (S.t * value) list
+  type bindings = (S.t * S.t) list
 
-  val value_of_rpc : Rpc.t -> value
-  val rpc_of_value : value -> Rpc.t
+  val rpc_of_t : S.t t -> Rpc.t
+  val t_of_rpc : Rpc.t -> S.t t
 
-  val rpc_of_t : value t -> Rpc.t
-  val t_of_rpc : Rpc.t -> value t
+  val update : S.t -> S.t -> S.t t -> S.t t
 
-  val add : ?ts:int64 -> S.t -> S.t -> value t -> value t
-  val update : ?ts:int64 -> S.t -> S.t -> value t -> value t
+  val sum : ?min_v:S.t -> ?max_v:S.t -> S.t t -> S.t
+  val buy_price : S.t t -> S.t -> S.t
+  val sell_price : S.t t -> S.t -> S.t
 
-  val sum : ?min_v:S.t -> ?max_v:S.t -> value t -> S.t
-  val buy_price : value t -> S.t -> S.t
-  val sell_price : value t -> S.t -> S.t
+  val amount_below_or_eq : S.t t -> S.t -> S.t
+  val amount_above_or_eq : S.t t -> S.t -> S.t
 
-  val amount_below_or_eq : value t -> S.t -> S.t
-  val amount_above_or_eq : value t -> S.t -> S.t
-
-  val arbiter_unsafe : value t -> value t -> S.t * S.t * S.t * S.t * S.t
+  val arbiter_unsafe : S.t t -> S.t t -> S.t * S.t * S.t * S.t * S.t
 end
 
 (** A book represent the depth for one currency, and one order kind *)
 module Book : BOOK = struct
   include SMap
 
-  type value = S.t * int64 with rpc
-  type bindings = (S.t * value) list with rpc
+  type bindings = (S.t * S.t) list with rpc
 
   let rpc_of_t v = rpc_of_bindings (bindings v)
   let t_of_rpc rpc = of_bindings (bindings_of_rpc rpc)
@@ -111,19 +105,16 @@ module Book : BOOK = struct
     let open S in
         SMap.fold (fun _ v acc -> min v acc) book S.(pow ~$2 128)
 
-  let add ?(ts=Unix.getmicrotime_int64 ()) price amount book =
-    SMap.add price (amount,ts) book
-
-  let update ?(ts=Unix.getmicrotime_int64 ()) price amount book =
+  let update price amount book =
     try
-      let old_amount, _ = SMap.find price book in
-      SMap.add price (S.(old_amount + amount), ts) book
-    with Not_found -> SMap.add price (amount, ts) book
+      let old_amount = SMap.find price book in
+      SMap.add price S.(old_amount + amount) book
+    with Not_found -> SMap.add price amount book
 
   let sum ?(min_v=S.(-pow ~$2 128)) ?(max_v=S.(pow ~$2 128)) book =
     let open S in
         SMap.fold
-          (fun pr (am,_) acc ->
+          (fun pr am acc ->
             if (geq pr min_v) && (leq pr max_v)
             then acc + pr*am else acc)
           book ~$0
@@ -132,14 +123,14 @@ module Book : BOOK = struct
     | Order.Bid ->
       let open S in
           let bindings = SMap.bindings book in
-          fst $ List.fold_right (fun (pr,(am,_)) (depth, prev_sum) ->
+          fst $ List.fold_right (fun (pr,am) (depth, prev_sum) ->
             SMap.add pr (am + prev_sum) depth, am + prev_sum)
             bindings (SMap.empty, ~$0)
 
     | Order.Ask ->
       let open S in
           let _, new_book =
-            SMap.fold (fun pr (am,_) (prev_sum, acc) ->
+            SMap.fold (fun pr am (prev_sum, acc) ->
               (prev_sum + am), SMap.add pr (prev_sum + am) acc
             ) book (~$0,SMap.empty) in
           new_book
@@ -152,7 +143,7 @@ module Book : BOOK = struct
 
   let buy_price ask_book amount =
     let open S in
-        fst (SMap.fold (fun pr (am,_) (pr_, am_) ->
+        fst (SMap.fold (fun pr am (pr_, am_) ->
           match sign (am_ - am) with
             | 1 -> (pr_ + pr*am, am_ - am)
             | 0 -> (pr_ + pr*am, am_ - am)
@@ -163,7 +154,7 @@ module Book : BOOK = struct
   let sell_price bid_book amount =
     let open S in
         let bindings = SMap.bindings bid_book in
-        fst (List.fold_right (fun (pr, (am,_)) (pr_,am_) ->
+        fst (List.fold_right (fun (pr, am) (pr_,am_) ->
           match sign (am_ - am) with
             | 1 -> (pr_ + pr*am, am_ - am)
             | 0 -> (pr_ + pr*am, am_ - am)
@@ -174,14 +165,14 @@ module Book : BOOK = struct
   let amount_below_or_eq book price =
     let open S in
         let l, data, r = SMap.split price book in
-        (SMap.fold (fun pr (am,_) acc -> acc + am)
-           l (fst (Opt.default (~$0,0L) data)))
+        (SMap.fold (fun pr am acc -> acc + am)
+           l (Opt.default ~$0 data))
 
   let amount_above_or_eq book price =
     let open S in
         let l, data, r = SMap.split price book in
-        (SMap.fold (fun pr (am,_) acc -> acc + am)
-           r (fst (Opt.default (~$0,0L) data)))
+        (SMap.fold (fun pr am acc -> acc + am)
+           r (Opt.default ~$0 data))
 
   let keys_between_or_eq book a b =
     let open S in
@@ -210,29 +201,11 @@ module Book : BOOK = struct
           ) (~$0, ~$0, ~$0, ~$0, ~$0) $ bid_keys @ ask_keys
         else
           S.(~$0, ~$0, ~$0, ~$0, ~$0)
-
-  let diff book1 book2 =
-    let open S in
-        let merge_fun key v1 v2 = match v1, v2 with
-          | None, None       -> failwith "Should never happen"
-          | Some (v1,ts1) , None    -> Some ((~- v1), ts1)
-          | None, Some (v2,ts2)    -> Some (v2, ts2)
-          | Some (v1,ts1), Some (v2,ts2) -> Some ((v2 - v1), (max ts1 ts2)) in
-        SMap.merge merge_fun book1 book2
-
-  let patch book patch =
-    let open S in
-        let merge_fun key v1 v2 = match v1, v2 with
-          | None, None -> failwith "Should never happen"
-          | Some (v1,ts1), None -> Some (v1, ts1)
-          | None, Some (v2,ts2) -> Some (v2, ts2)
-          | Some (v1,ts1), Some (v2,ts2) -> Some ((v1 + v2), (max ts1 ts2)) in
-        SMap.merge merge_fun book patch
 end
 
 module BooksFunctor = struct
   module Make (B : BOOK) = struct
-    type book = B.value B.t
+    type book = S.t B.t
     let book_of_rpc = B.t_of_rpc
     let rpc_of_book = B.rpc_of_t
 
@@ -245,19 +218,17 @@ module BooksFunctor = struct
     let (empty:t) = StringMap.empty
 
     let modify
-        (action_fun :
-           ?ts:int64 -> B.key -> B.key -> B.value B.t -> B.value B.t)
-        ?(ts=Unix.getmicrotime_int64 ())
+        (action_fun : B.key -> B.key -> S.t B.t -> S.t B.t)
         books curr kind price amount =
       let bid, ask =
         try StringMap.find curr books
         with Not_found -> (B.empty, B.empty)  in
       match kind with
         | Order.Bid ->
-          let newbook = action_fun ~ts price amount bid in
+          let newbook = action_fun price amount bid in
           StringMap.add curr (newbook, ask) books
         | Order.Ask ->
-          let newbook = action_fun ~ts price amount ask in
+          let newbook = action_fun price amount ask in
           StringMap.add curr (bid, newbook) books
 
     let add = modify B.add
@@ -279,7 +250,7 @@ module BooksFunctor = struct
 
     let print books =
       let print_one book = Book.iter
-        (fun price (amount,ts) -> Printf.printf "(%f,%f) "
+        (fun price amount -> Printf.printf "(%f,%f) "
           (S.to_face_float price)
           (S.to_face_float amount)) book in
       StringMap.iter (fun curr (bid,ask) ->

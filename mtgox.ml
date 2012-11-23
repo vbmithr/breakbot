@@ -200,7 +200,6 @@ module Parser = struct
   let parse_depth books rpc =
     let dm = depth_msg_of_rpc rpc in
     Books.add
-      ~ts:(Int64.of_string dm.depth.now)
       books
       dm.depth.currency
       (Order.kind_of_string dm.depth.type_str)
@@ -219,13 +218,12 @@ module Parser = struct
                   parse_array ((s, lex)::acc) books
                 | _ -> failwith "parse_array")
             | `Lexeme `Oe ->
-              let ts = Int64.of_string (List.assoc "stamp" acc |> unstr)
-              and price =
+              let price =
                 Z.(of_string (List.assoc "price_int" acc |> unstr) * ~$1000)
               and amount = Z.of_string
                 (List.assoc "amount_int" acc |> unstr) in
               let books =
-                Books.add ~ts books "USD" (Order.kind_of_string ctx)
+                Books.add books "USD" (Order.kind_of_string ctx)
                   price amount in
               parse_array [] books
             | `Lexeme `Ae -> parse_orderbook "" books
