@@ -51,9 +51,9 @@ module Protocol = struct
     | oth -> oth
 end
 
-class bitstamp login passwd btc_addr =
+class bitstamp login passwd btc_addr push_f=
 object (self)
-  inherit Exchange.exchange "bitstamp"
+  inherit Exchange.exchange "bitstamp" push_f
 
   method fee = 0.005
   method currs = StringSet.of_list ["USD"]
@@ -78,7 +78,7 @@ object (self)
                             (S.of_face_float amount_float) in
                           Book.add price amount acc) Book.empty depth.bids in
             let () = books <- StringMap.add "USD" (bid_book, ask_book) books in
-            self#notify
+            Lwt.wrap (fun () -> self#notify)
           with exc ->
             let exc_str = Printexc.to_string exc in
             Lwt_log.error_f "Bitstamp update error: %s" exc_str

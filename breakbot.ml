@@ -32,14 +32,19 @@ let main () =
     | [login; passwd; addr] -> login, passwd, addr
     | _ -> failwith "Syntax error in config file."
   in
-  let exchanges =
-    [(* (new Mtgox.mtgox mtgox_key mtgox_secret mtgox_addr :> Exchange.exchange); *)
-     (new Btce.btce btce_key btce_secret btce_addr      :> Exchange.exchange);
-     (new Bitstamp.bitstamp bs_login bs_passwd bs_addr  :> Exchange.exchange)
+  let ustream, push_f = Lwt_stream.create () in
+  let exchanges_assq =
+    ["mtgox", (new Mtgox.mtgox mtgox_key mtgox_secret mtgox_addr push_f
+               :> Exchange.exchange);
+     "btce", (new Btce.btce btce_key btce_secret btce_addr push_f
+              :> Exchange.exchange);
+     "bitstamp", (new Bitstamp.bitstamp bs_login bs_passwd bs_addr push_f
+                  :> Exchange.exchange)
     ] in
-  let mvars = List.map (fun xch -> xch#get_mvar) exchanges in
-  let rec process mvars =
-    lwt updated_xchs = Lwt.npick $ List.rev_map Lwt_mvar.take mvars in
+  let exchanges = List.map snd exchanges_assq in
+  let rec process ustream =
+    lwt updated_xch = Lwt_stream.get ustream >|= Opt.unbox in
+    let updated_xchs = List.assoc updated_xch exchanges_assq in
     let arbiter_all xch =
       let other_xchs = List.filter (fun x -> x != xch) exchanges in
       let arbiter_one x1 x2 =
@@ -57,8 +62,8 @@ let main () =
           Lwt.return ()
         with Not_found -> Lwt.return () in
       Lwt_list.iter_s (fun x -> arbiter_one xch x) other_xchs in
-    Lwt_list.iter_s arbiter_all updated_xchs >> process mvars
+    arbiter_all updated_xchs >> process ustream
   in
-  Lwt.join $ process mvars :: List.map (fun xch -> xch#update) exchanges
+  Lwt.join $ process ustream :: List.map (fun xch -> xch#update) exchanges
 
 let () = Lwt_main.run $ main ()

@@ -19,9 +19,9 @@ and bstamp_l, bstamp_p, bstamp_addr =
     | _ -> failwith "Syntax error in config file."
 
 let exchanges = [
-  (new Mtgox.mtgox mtgox_key mtgox_secret mtgox_addr :> Exchange.exchange);
-  (new Btce.btce btce_key btce_secret btce_addr :> Exchange.exchange);
-  (new Bitstamp.bitstamp bstamp_l bstamp_p bstamp_addr :> Exchange.exchange)
+  (new Mtgox.mtgox mtgox_key mtgox_secret mtgox_addr ignore :> Exchange.exchange);
+  (new Btce.btce btce_key btce_secret btce_addr ignore :> Exchange.exchange);
+  (new Bitstamp.bitstamp bstamp_l bstamp_p bstamp_addr ignore :> Exchange.exchange)
 ]
 
 let print_balances ?curr xchs =

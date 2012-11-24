@@ -236,17 +236,15 @@ module Books = BooksFunctor.Make(Book)
 module Exchange = struct
   type balances = (string * S.t) list
 
-  class virtual exchange (name:string) =
+  class virtual exchange (name:string) (push_f: 'a option -> unit) =
   object (self)
     val mutable books = Books.empty
-    val         mvar  = (Lwt_mvar.create_empty () : exchange Lwt_mvar.t)
 
     method name      = name
+    method get_books = books
     method print     = Printf.printf "Books for exchange %s:\n%!" name;
       Books.print books
-    method notify    = Lwt_mvar.put mvar (self :> exchange)
-    method get_books = books
-    method get_mvar  = mvar
+    method notify = push_f (Some self#name)
 
     method virtual fee : float
     method virtual currs     : StringSet.t

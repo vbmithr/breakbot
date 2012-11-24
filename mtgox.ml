@@ -258,9 +258,9 @@ end
 
 open Protocol
 
-class mtgox key secret btc_addr =
+class mtgox key secret btc_addr push_f =
 object (self)
-  inherit Exchange.exchange "mtgox"
+  inherit Exchange.exchange "mtgox" push_f
 
   val mutable buf_in    = Sharedbuf.empty ~bufsize:0 ()
   val mutable buf_out   = Sharedbuf.empty ~bufsize:0 ()
@@ -289,7 +289,7 @@ object (self)
             let () = books <- new_books in
             (* maybe use reset here ? *)
             let () = Buffer.clear buf_json_in in
-            lwt () = self#notify in
+            let () = self#notify in
             Lwt.return len)
         in
         main_loop () in

@@ -84,9 +84,9 @@ module Protocol = struct
     | _ -> raise_lwt (Failure "should not happen")
 end
 
-class btce key secret btc_addr =
+class btce key secret btc_addr push_f =
 object (self)
-  inherit Exchange.exchange "btce"
+  inherit Exchange.exchange "btce" push_f
 
   method fee = 0.002
   method currs = StringSet.of_list ["USD"]
@@ -112,7 +112,7 @@ object (self)
                               (S.of_face_float amount_float) in
                             Book.add price amount acc) Book.empty depth.bids in
             let () = books <- StringMap.add "USD" (bid_book, ask_book) books in
-            self#notify
+            Lwt.wrap (fun () -> self#notify)
           with exc ->
             let exc_str = Printexc.to_string exc in
             Lwt_log.error_f "Btce update error: %s" exc_str
