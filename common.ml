@@ -149,28 +149,29 @@ module Book : BOOK = struct
           let askdepthbook = depth_of_ask ask in
           let max_qty = amount_at_price_ask askdepthbook max_bid in
           let interval = max_qty / (of_int num_iter) in
-          let best_arbitrage = ref (~$0, ~$0, ~$0, ~$0) in
-          let perform () =
-            try for i = 1 to num_iter do
-                let qty = (of_int i) * interval in
-                let sell_qty_rem, sell_pr = sell_price bid qty
-                and buy_qty_rem, buy_pr = buy_price ask qty in
-                let gain = sell_pr - buy_pr in
-                if max sell_qty_rem buy_qty_rem <> ~$0 then
-                  failwith "break" else
-                  (best_arbitrage := Pervasives.max !best_arbitrage
-                     (gain, -qty, sell_pr, buy_pr);
-                   Lwt.ignore_result $
-                     Lwt_log.debug_f "%f, %f, %f, %f\n%!"
-                     (S.to_face_float qty)
-                     (S.to_float sell_pr /. 1e16)
-                     (S.to_float buy_pr /. 1e16)
-                     (S.to_float gain /. 1e16))
-              done with Failure "break" -> () in
-          let (), time = Utils.timeit perform () in
-          Lwt.ignore_result $ Lwt_log.info_f ("Computation time: %0.6f\n")
-            time;
-          !best_arbitrage
+          let rec perform acc i =
+            if i <= num_iter then
+              let qty = (of_int i) * interval in
+              let sell_qty_rem, sell_pr = sell_price bid qty
+              and buy_qty_rem, buy_pr = buy_price ask qty in
+              let gain = sell_pr - buy_pr in
+              if max sell_qty_rem buy_qty_rem <> ~$0 then acc
+              else
+                (Lwt.ignore_result $
+                   Lwt_log.debug_f "%f, %f, %f, %f\n%!"
+                   (S.to_face_float qty)
+                   (S.to_float sell_pr /. 1e16)
+                   (S.to_float buy_pr /. 1e16)
+                   (S.to_float gain /. 1e16);
+                 perform
+                   (Pervasives.max acc (gain, -qty, sell_pr, buy_pr))
+                   (Pervasives.succ i))
+            else acc in
+          let res, time = Utils.timeit
+            (fun () -> perform (~$0, ~$0, ~$0, ~$0) 1) in
+          Lwt.ignore_result $
+            Lwt_log.info_f ("Computation time: %0.6f\n") time;
+          res
         else
           (~$0, ~$0, ~$0, ~$0)
 end

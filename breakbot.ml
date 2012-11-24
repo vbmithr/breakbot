@@ -61,7 +61,7 @@ let main () =
             x1#name
             ((function true -> "->"| false -> "<-") direction)
             x2#name
-            (S.to_face_float qty) real_gain (ratio /. 100.0)
+            (S.to_face_float qty) real_gain (ratio *. 100.0)
         with Not_found -> Lwt.return () in
       Lwt_list.iter_s (fun x -> arbiter_one xch x) other_xchs in
     arbiter_all updated_xchs >> process ustream
