@@ -249,7 +249,8 @@ module Parser = struct
         let rpc = Jsonrpc.of_string json_str in
         Lwt.choose [Lwt.wrap2 parse_depth books rpc]
       with e ->
-        Printf.printf "Failed to parse automatically: %s\n"
+        Lwt.ignore_result $
+          Lwt_log.warning_f "Failed to parse automatically: %s\n"
           (Printexc.to_string e);
         (* Automatic parsing failed *)
         let decoder = Jsonm.decoder (`String json_str) in
@@ -297,7 +298,7 @@ object (self)
       lwt () = Sharedbuf.write_lines buf_out
         [unsubscribe Ticker |> rpc_of_async_message |> Jsonrpc.to_string;
          unsubscribe Trade |> rpc_of_async_message |> Jsonrpc.to_string] in
-      (* lwt (_:int) = self#command_async (Protocol.query_simple "USD" "depth") in *)
+      lwt (_:int) = self#command_async (Protocol.query_simple "USD" "depth") in
       main_loop () in
     try_lwt
       Websocket.with_websocket "http://websocket.mtgox.com/mtgox" update

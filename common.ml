@@ -81,7 +81,7 @@ module type BOOK = sig
   val t_of_rpc : Rpc.t -> S.t t
 
   val update : S.t -> S.t -> S.t t -> S.t t
-  val arbiter_unsafe : S.t t -> S.t t -> int -> S.t * S.t * S.t * S.t
+  val arbiter : S.t t -> S.t t -> int -> S.t * S.t * S.t * S.t
 end
 
 (** A book represent the depth for one currency, and one order kind *)
@@ -141,7 +141,7 @@ module Book : BOOK = struct
         ) bindings (qty, ~$0)
 
 
-  let arbiter_unsafe bid ask num_iter =
+  let arbiter bid ask num_iter =
     let open S in
         let max_bid = fst $ max_binding bid
         and min_ask = fst $ min_binding ask in
@@ -150,26 +150,26 @@ module Book : BOOK = struct
           let max_qty = amount_at_price_ask askdepthbook max_bid in
           let interval = max_qty / (of_int num_iter) in
           let best_arbitrage = ref (~$0, ~$0, ~$0, ~$0) in
-          let time_start = Unix.gettimeofday () in
-          (try for i = 1 to num_iter do
-              let qty = (of_int i) * interval in
-              let sell_qty_rem, sell_pr = sell_price bid qty
-              and buy_qty_rem, buy_pr = buy_price ask qty in
-              let gain = sell_pr - buy_pr in
-              if max sell_qty_rem buy_qty_rem <> ~$0 then
-                failwith "break" else
-                (best_arbitrage := Pervasives.max !best_arbitrage
-                   (gain, -qty, sell_pr, buy_pr)
-                (* ; *)
-                (*  Printf.printf "%f, %f, %f, %f\n%!" *)
-                (*    (S.to_face_float qty) *)
-                (*    (S.to_float sell_pr /. 1e16) *)
-                (*    (S.to_float buy_pr /. 1e16) *)
-                (*    (S.to_float gain /. 1e16) *)
-                )
-            done with Failure "break" -> ());
-          Printf.printf ("Computation time: %0.6f\n")
-            (Unix.gettimeofday () -. time_start);
+          let perform () =
+            try for i = 1 to num_iter do
+                let qty = (of_int i) * interval in
+                let sell_qty_rem, sell_pr = sell_price bid qty
+                and buy_qty_rem, buy_pr = buy_price ask qty in
+                let gain = sell_pr - buy_pr in
+                if max sell_qty_rem buy_qty_rem <> ~$0 then
+                  failwith "break" else
+                  (best_arbitrage := Pervasives.max !best_arbitrage
+                     (gain, -qty, sell_pr, buy_pr);
+                   Lwt.ignore_result $
+                     Lwt_log.debug_f "%f, %f, %f, %f\n%!"
+                     (S.to_face_float qty)
+                     (S.to_float sell_pr /. 1e16)
+                     (S.to_float buy_pr /. 1e16)
+                     (S.to_float gain /. 1e16))
+              done with Failure "break" -> () in
+          let (), time = Utils.timeit perform () in
+          Lwt.ignore_result $ Lwt_log.info_f ("Computation time: %0.6f\n")
+            time;
           !best_arbitrage
         else
           (~$0, ~$0, ~$0, ~$0)
@@ -212,10 +212,11 @@ module BooksFunctor = struct
       let open S in
           let b1, a1 = StringMap.find curr books1
           and b2, a2 = StringMap.find curr books2 in
-          let gain1, qty1, spr1, bpr1 = (B.arbiter_unsafe b2 a1 nb_iter)
-          and gain2, qty2, spr2, bpr2 = (B.arbiter_unsafe b1 a2 nb_iter) in
-          (-qty1, spr1, bpr1),
-          (-qty2, spr2, bpr2)
+          let gain1, qty1, spr1, bpr1 = (B.arbiter b2 a1 nb_iter)
+          and gain2, qty2, spr2, bpr2 = (B.arbiter b1 a2 nb_iter) in
+          (gain1 <> ~$0),
+          Pervasives.max
+            (gain1, -qty1, spr1, bpr1) (gain2, -qty2, spr2, bpr2)
 
     let print books =
       let print_one book = Book.iter

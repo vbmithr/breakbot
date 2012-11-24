@@ -49,17 +49,19 @@ let main () =
       let other_xchs = List.filter (fun x -> x != xch) exchanges in
       let arbiter_one x1 x2 =
         try_lwt
-          let (qty1, spr1, bpr1), (qty2, spr2, bpr2) = Books.arbiter_unsafe
+          let direction, (_, qty, spr, bpr) = Books.arbiter_unsafe
             "USD" x1#get_books x2#get_books nb_of_iter in
-          let real_gain (spr,sfees) (bpr,bfees) =
-            ((S.to_float spr *. sfees -. S.to_float bpr *. bfees) /. 1e16) in
-          Printf.printf "%s\t -> \t%s: %f (%f USD)\n%!"
-            x1#name x2#name
-            (S.to_face_float qty1) (real_gain (spr1,x2#fee) (bpr1,x1#fee));
-          Printf.printf "%s\t <- \t%s: %f (%f USD)\n%!"
-            x1#name x2#name
-            (S.to_face_float qty2) (real_gain (spr2,x1#fee) (bpr2,x2#fee));
-          Lwt.return ()
+          let real_gain, ratio =
+            let bfees, sfees = if direction then x1#fee, x2#fee
+              else x2#fee, x1#fee in
+            let spr_float, bpr_float = S.to_float spr, S.to_float bpr in
+            let gain_float = (spr_float *. sfees -. bpr_float *. bfees) in
+            gain_float /. 1e16, gain_float /. bpr_float in
+          Lwt_log.notice_f "%s\t %s \t%s: %f (%f USD, %f %%)\n%!"
+            x1#name
+            ((function true -> "->"| false -> "<-") direction)
+            x2#name
+            (S.to_face_float qty) real_gain (ratio /. 100.0)
         with Not_found -> Lwt.return () in
       Lwt_list.iter_s (fun x -> arbiter_one xch x) other_xchs in
     arbiter_all updated_xchs >> process ustream
