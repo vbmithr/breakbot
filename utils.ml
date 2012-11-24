@@ -90,6 +90,11 @@ let with_finally f f_block =
   with e ->
     f_block (); raise e
 
+let timeit f arg =
+  let time_start = Unix.gettimeofday () in
+  let ret = f arg in
+  ret, (Unix.gettimeofday () -. time_start)
+
 module Unix = struct
   include Unix
 

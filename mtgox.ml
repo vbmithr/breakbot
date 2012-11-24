@@ -268,6 +268,10 @@ object (self)
   val key               = key
   val buf_json_in       = Buffer.create 4096
 
+  method fee = 0.006
+  method currs = StringSet.of_list ["USD"; "EUR"; "GBP"]
+  method base_curr = "USD"
+
   method update =
     let rec update (bi, bo) =
       buf_in    <- bi;
@@ -338,10 +342,6 @@ object (self)
       CoUnix.Client.post ~chunked:false ~headers
       ?body:(CoUnix.Body.body_of_string encoded_params) endpoint in
     CoUnix.Body.string_of_body body >|= Jsonrpc.of_string
-
-  method currs = StringSet.of_list ["USD"; "EUR"; "GBP"]
-
-  method base_curr = "USD"
 
   method place_order kind curr price amount =
     lwt rpc = self#command $ Protocol.query ~async:false

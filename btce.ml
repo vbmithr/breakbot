@@ -88,6 +88,7 @@ class btce key secret btc_addr =
 object (self)
   inherit Exchange.exchange "btce"
 
+  method fee = 0.002
   method currs = StringSet.of_list ["USD"]
   method base_curr = "USD"
 

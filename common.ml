@@ -81,10 +81,6 @@ module type BOOK = sig
   val t_of_rpc : Rpc.t -> S.t t
 
   val update : S.t -> S.t -> S.t t -> S.t t
-
-  val buy_price : S.t t -> S.t -> S.t
-  val sell_price : S.t t -> S.t -> S.t
-
   val arbiter_unsafe : S.t t -> S.t t -> int -> S.t * S.t * S.t * S.t
 end
 
@@ -131,30 +127,22 @@ module Book : BOOK = struct
 
   let buy_price book qty =
     let open S in
-        let _, price =
-          SMap.fold (fun pr am (qty_rem, price) ->
-            let min_qty = min am qty_rem in
-            (qty_rem - min_qty, price + pr*min_qty)
-          ) book (qty, ~$0)
-        in price
+        SMap.fold (fun pr am (qty_rem, price) ->
+          let min_qty = min am qty_rem in
+          (qty_rem - min_qty, price + pr*min_qty)
+        ) book (qty, ~$0)
 
   let sell_price book qty =
     let open S in
         let bindings = SMap.bindings book in
-        let _, price =
-          List.fold_right (fun (pr, am) (qty_rem, price) ->
-            let min_qty = min am qty_rem in
-            (qty_rem - min_qty, price + pr*min_qty)
-          ) bindings (qty, ~$0)
-        in price
+        List.fold_right (fun (pr, am) (qty_rem, price) ->
+          let min_qty = min am qty_rem in
+          (qty_rem - min_qty, price + pr*min_qty)
+        ) bindings (qty, ~$0)
+
 
   let arbiter_unsafe bid ask num_iter =
     let open S in
-        let max4 (a,b,c,d) (e,f,g,h) =
-          match sign $ a - e with
-            | 1 -> (a,b,c,d)
-            | 0 -> (a,b,c,d)
-            | -1 -> (e,f,g,h) | _ -> failwith "" in
         let max_bid = fst $ max_binding bid
         and min_ask = fst $ min_binding ask in
         if gt max_bid min_ask then
@@ -162,17 +150,26 @@ module Book : BOOK = struct
           let max_qty = amount_at_price_ask askdepthbook max_bid in
           let interval = max_qty / (of_int num_iter) in
           let best_arbitrage = ref (~$0, ~$0, ~$0, ~$0) in
-          for i = 1 to num_iter do
-            let qty = (of_int i) * interval in
-            let sell_pr = sell_price bid qty
-            and buy_pr = buy_price ask qty in
-            best_arbitrage := max4 !best_arbitrage
-              (sell_pr - buy_pr, qty, sell_pr, buy_pr);
-            Printf.printf "%f, %f, %f\n%!"
-              (S.to_face_float qty)
-              (S.to_float sell_pr /. 1e16)
-              (S.to_float buy_pr /. 1e16)
-          done;
+          let time_start = Unix.gettimeofday () in
+          (try for i = 1 to num_iter do
+              let qty = (of_int i) * interval in
+              let sell_qty_rem, sell_pr = sell_price bid qty
+              and buy_qty_rem, buy_pr = buy_price ask qty in
+              let gain = sell_pr - buy_pr in
+              if max sell_qty_rem buy_qty_rem <> ~$0 then
+                failwith "break" else
+                (best_arbitrage := Pervasives.max !best_arbitrage
+                   (gain, -qty, sell_pr, buy_pr)
+                (* ; *)
+                (*  Printf.printf "%f, %f, %f, %f\n%!" *)
+                (*    (S.to_face_float qty) *)
+                (*    (S.to_float sell_pr /. 1e16) *)
+                (*    (S.to_float buy_pr /. 1e16) *)
+                (*    (S.to_float gain /. 1e16) *)
+                )
+            done with Failure "break" -> ());
+          Printf.printf ("Computation time: %0.6f\n")
+            (Unix.gettimeofday () -. time_start);
           !best_arbitrage
         else
           (~$0, ~$0, ~$0, ~$0)
@@ -217,8 +214,8 @@ module BooksFunctor = struct
           and b2, a2 = StringMap.find curr books2 in
           let gain1, qty1, spr1, bpr1 = (B.arbiter_unsafe b2 a1 nb_iter)
           and gain2, qty2, spr2, bpr2 = (B.arbiter_unsafe b1 a2 nb_iter) in
-          (qty1, spr1, bpr1),
-          (qty2, spr2, bpr2)
+          (-qty1, spr1, bpr1),
+          (-qty2, spr2, bpr2)
 
     let print books =
       let print_one book = Book.iter
@@ -251,6 +248,7 @@ module Exchange = struct
     method get_books = books
     method get_mvar  = mvar
 
+    method virtual fee : float
     method virtual currs     : StringSet.t
     method virtual base_curr : string
 

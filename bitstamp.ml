@@ -55,6 +55,7 @@ class bitstamp login passwd btc_addr =
 object (self)
   inherit Exchange.exchange "bitstamp"
 
+  method fee = 0.005
   method currs = StringSet.of_list ["USD"]
   method base_curr = "USD"
 
