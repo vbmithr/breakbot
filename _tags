@@ -1,17 +1,12 @@
 <**/*.{ml,native,byte}>: syntax(camlp4o),\
-        package(cmdliner),\
         package(lwt.syntax),\
+        package(lwt.syntax.log),\
         package(rpclib.syntax),\
-        package(zarith),\
-        package(rpclib),\
+        package(rpclib.json),\
         package(jsonm),\
-        package(xmlm),\
-        package(lwt),\
-        package(lwt.extra),\
-        package(lwt.unix),\
-        package(cohttp),\
         package(cohttp.lwt),\
         package(cryptokit),\
         package(uuidm),\
-        package(ANSITerminal),\
+        package(cmdliner),\
+        package(zarith),\
         thread, annot
