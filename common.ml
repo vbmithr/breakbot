@@ -81,7 +81,7 @@ module type BOOK = sig
   val t_of_rpc : Rpc.t -> S.t t
 
   val update : S.t -> S.t -> S.t t -> S.t t
-  val arbiter : S.t t -> S.t t -> int -> S.t * S.t * S.t * S.t
+  val arbiter : S.t t -> S.t t -> int -> float -> S.t * S.t * S.t * S.t
 end
 
 (** A book represent the depth for one currency, and one order kind *)
@@ -141,7 +141,7 @@ module Book : BOOK = struct
         ) bindings (qty, ~$0)
 
 
-  let arbiter bid ask num_iter =
+  let arbiter bid ask num_iter min_ratio =
     let open S in
         let max_bid = fst $ max_binding bid
         and min_ask = fst $ min_binding ask in
@@ -164,7 +164,9 @@ module Book : BOOK = struct
                    (S.to_float buy_pr /. 1e16)
                    (S.to_float gain /. 1e16);
                  perform
-                   (Pervasives.max acc (gain, -qty, sell_pr, buy_pr))
+                   (if (to_float gain /. to_float buy_pr) > min_ratio
+                    then Pervasives.max acc (gain, -qty, sell_pr, buy_pr)
+                    else acc)
                    (Pervasives.succ i))
             else acc in
           let res, time = Utils.timeit
@@ -209,12 +211,12 @@ module BooksFunctor = struct
 
     let remove books curr = StringMap.remove curr books
 
-    let arbiter_unsafe curr books1 books2 nb_iter =
+    let arbiter_unsafe curr books1 books2 nb_iter min_ratio =
       let open S in
           let b1, a1 = StringMap.find curr books1
           and b2, a2 = StringMap.find curr books2 in
-          let gain1, qty1, spr1, bpr1 = (B.arbiter b2 a1 nb_iter)
-          and gain2, qty2, spr2, bpr2 = (B.arbiter b1 a2 nb_iter) in
+          let gain1, qty1, spr1, bpr1 = (B.arbiter b2 a1 nb_iter min_ratio)
+          and gain2, qty2, spr2, bpr2 = (B.arbiter b1 a2 nb_iter min_ratio) in
           (gain1 <> ~$0),
           Pervasives.max
             (gain1, -qty1, spr1, bpr1) (gain2, -qty2, spr2, bpr2)

@@ -8,6 +8,7 @@ open Common
    case that processing is indeed faster than receiving+parsing *)
 
 let nb_of_iter = 100
+let min_ratio = 0.015
 
 let main () =
   let template = "$(date).$(milliseconds) [$(level)]: $(message)" in
@@ -50,7 +51,7 @@ let main () =
       let arbiter_one x1 x2 =
         try_lwt
           let direction, (_, qty, spr, bpr) = Books.arbiter_unsafe
-            "USD" x1#get_books x2#get_books nb_of_iter in
+            "USD" x1#get_books x2#get_books nb_of_iter min_ratio in
           let real_gain, ratio =
             let bfees, sfees = if direction then x1#fee, x2#fee
               else x2#fee, x1#fee in
