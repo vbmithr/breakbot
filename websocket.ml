@@ -1,8 +1,7 @@
 open Utils
 open Lwt_utils
-open Common
-open Mycohttp
 
+module CoUnix = Cohttp_lwt_unix
 module CK = Cryptokit
 
 type response_error =
@@ -66,7 +65,7 @@ let check_response_is_conform resp nonce64 =
       (CK.hash_string (CK.Hash.sha1 ()) (nonce64 ^ websocket_uuid)) in
     if accept <> hash
     then raise (Response_failure Bad_sec_websocket_accept) in
-  let hdrs = Response.headers resp in
+  let hdrs = CoUnix.Response.headers resp in
   let hdrs = Cohttp.Header.to_list hdrs in
 
   (try (match List.assoc "upgrade" hdrs with
@@ -87,9 +86,9 @@ let check_response_is_conform resp nonce64 =
    with Not_found -> raise (Response_failure Bad_sec_websocket_accept)
   );
 
-  if Response.version resp <> `HTTP_1_1
+  if CoUnix.Response.version resp <> `HTTP_1_1
   then raise (Response_failure Bad_http_version);
-  if Response.status resp <> `Switching_protocols
+  if CoUnix.Response.status resp <> `Switching_protocols
   then raise (Response_failure Bad_status_code)
 
 let with_websocket uri_string f =
@@ -112,12 +111,12 @@ let with_websocket uri_string f =
          "Connection"            , "Upgrade";
          "Sec-WebSocket-Key"     , nonce64;
          "Sec-WebSocket-Version" , "13"] in
-    let req = Request.make ~headers uri in
+    let req = CoUnix.Request.make ~headers uri in
     let sock_fun fd = Lwt_unix.setsockopt fd Lwt_unix.TCP_NODELAY true in
     lwt ic, oc =
       Lwt_io.open_connection_dns ~sock_fun host (string_of_int port) in
-    lwt () = Client.write_request req oc in
-    lwt response, _ = Lwt.bind_opt $ Client.read_response ic oc in
+    lwt () = CoUnix.Client.write_request req oc in
+    lwt response, _ = Lwt.bind_opt $ CoUnix.Client.read_response ic oc in
     lwt () = Lwt.wrap2 check_response_is_conform response nonce64 in
     lwt () = Lwt_log.notice_f "(Re)connected to %s\n%!" uri_string in
     Lwt.return (ic, oc)

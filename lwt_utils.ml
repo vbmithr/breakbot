@@ -6,7 +6,7 @@ let (=|<) f g  = Lwt.map f g
 module Lwt = struct
   include Lwt
 
-  let of_opt = function
+  let wrapopt = function
     | Some v -> return v
     | None   -> raise_lwt Not_found
 
@@ -18,10 +18,6 @@ module Lwt_io = struct
   include Lwt_io
   open Lwt
   open Lwt_unix
-
-  let tcp_conn_flags = [AI_FAMILY(PF_INET);
-                        (* AI_FAMILY(PF_INET6);  *)
-                        AI_SOCKTYPE(SOCK_STREAM)]
 
   let open_connection ?buffer_size ?sock_fun sockaddr =
     let fd = Lwt_unix.socket
@@ -39,7 +35,7 @@ module Lwt_io = struct
     try_lwt
       lwt () = Lwt_unix.connect fd sockaddr in
       (try Lwt_unix.set_close_on_exec fd with Invalid_argument _ -> ());
-      (try let sock_fun = Opt.unbox sock_fun in sock_fun fd with _ -> ());
+      (match sock_fun with Some f -> (try f fd with _ -> ()) | None -> ());
       return (make ?buffer_size
                 ~close:(fun _ -> Lazy.force close)
                 ~mode:input (Lwt_bytes.read fd),
@@ -50,24 +46,21 @@ module Lwt_io = struct
       lwt () = Lwt_unix.close fd in
       raise_lwt exn
 
-  let with_connection_dns node service f =
-    lwt addr_infos = getaddrinfo node service tcp_conn_flags in
+  let with_connection_dns
+      ?(gaiopts = [AI_FAMILY(PF_INET); AI_SOCKTYPE(SOCK_STREAM)])
+      node service f =
+    lwt addr_infos = getaddrinfo node service gaiopts in
     lwt addr_info =
       match addr_infos
       with h::t -> Lwt.return h | [] -> raise_lwt Not_found in
     Lwt_io.with_connection addr_info.ai_addr f
 
-  let open_connection_dns ?sock_fun node service =
-    lwt addr_infos = getaddrinfo node service tcp_conn_flags in
+  let open_connection_dns
+      ?(gaiopts = [AI_FAMILY(PF_INET); AI_SOCKTYPE(SOCK_STREAM)])
+      ?sock_fun node service =
+    lwt addr_infos = getaddrinfo node service gaiopts in
     lwt addr_info =
       match addr_infos
       with h::t -> Lwt.return h | [] -> raise_lwt Not_found in
     open_connection ?sock_fun addr_info.ai_addr
 end
-
-let print_to_stdout (ic, oc) : unit Lwt.t =
-  let rec print_to_stdout () =
-    lwt line = Lwt_io.read_line ic in
-    lwt () = Lwt_io.printf "%s\n" line in
-    print_to_stdout ()
-  in print_to_stdout ()
