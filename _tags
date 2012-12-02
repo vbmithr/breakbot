@@ -1,4 +1,6 @@
 <**/*.{ml,native,byte}>: syntax(camlp4o),\
+        package(bitstring),\
+        package(bitstring.syntax),\
         package(lwt.syntax),\
         package(lwt.syntax.log),\
         package(rpclib.syntax),\

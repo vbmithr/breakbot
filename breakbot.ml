@@ -8,7 +8,7 @@ open Common
    case that processing is indeed faster than receiving+parsing *)
 
 let nb_of_iter = 100
-let min_ratio = 0.015
+let min_ratio = 0.0
 
 let main () =
   let template = "$(date).$(milliseconds) [$(level)]: $(message)" in

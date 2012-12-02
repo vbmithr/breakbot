@@ -197,7 +197,7 @@ end
 
 module Parser = struct
   open Protocol
-  let parse_depth books rpc =
+  let parse_depth (books:Books.t) rpc : Books.t =
     let dm = depth_msg_of_rpc rpc in
     Books.add
       books
@@ -206,7 +206,7 @@ module Parser = struct
       S.(of_string dm.depth.price_int * ~$1000)
       S.(of_string dm.depth.total_volume_int)
 
-  let parse_orderbook books decoder =
+  let parse_orderbook (books:Books.t) decoder : Books.t =
     let rec parse_orderbook ctx books =
       let unstr = function `String str -> str | _ -> failwith "unstr" in
 
@@ -242,29 +242,27 @@ module Parser = struct
 
   let rec parse books json_str =
     if (String.length json_str) > 4096 then (* It is the depths *)
-      let decoder = Jsonm.decoder (`String json_str) in
-      Lwt.wrap2 parse_orderbook books decoder
+      Jsonm.decoder (`String json_str) |> parse_orderbook books
     else
-      try_lwt
-        let rpc = Jsonrpc.of_string json_str in
-        Lwt.choose [Lwt.wrap2 parse_depth books rpc]
+      try
+        Jsonrpc.of_string json_str |> parse_depth books
       with e ->
         Lwt.ignore_result $
           Lwt_log.warning_f "Failed to parse automatically: %s\n"
           (Printexc.to_string e);
         (* Automatic parsing failed *)
-        let decoder = Jsonm.decoder (`String json_str) in
-        Lwt.wrap2 parse_orderbook books decoder
+        Jsonm.decoder (`String json_str) |> parse_orderbook books
 end
 
 open Protocol
 
 class mtgox key secret btc_addr push_f =
+  let push_msg f m : unit = f (Some m); f (Some "") in
 object (self)
   inherit Exchange.exchange "mtgox" push_f
 
-  val mutable buf_in    = Sharedbuf.empty ~bufsize:0 ()
-  val mutable buf_out   = Sharedbuf.empty ~bufsize:0 ()
+  val mutable stream = Lwt_stream.of_list [""]
+  val mutable push   = fun (_:string option) -> ()
 
   val key               = key
   val buf_json_in       = Buffer.create 4096
@@ -274,32 +272,29 @@ object (self)
   method base_curr = "USD"
 
   method update =
-    let rec update (bi, bo) =
-      buf_in    <- bi;
-      buf_out   <- bo;
+    let rec update (s, p) =
+      stream <- s;
+      push   <- p;
 
       let rec main_loop () =
-        lwt (_:int) = Sharedbuf.with_read buf_in (fun buf len ->
-          if len > 0 then (* Uncomplete message *)
-            let () = Buffer.add_string buf_json_in (String.sub buf 0 len)
-            in Lwt.return len
-          else
-            let buf_str = Buffer.contents buf_json_in in
-            (* let () = Printf.printf "%s\n%!" buf_str in *)
-            lwt new_books = Parser.parse books buf_str in
-            let () = books <- new_books in
-            (* maybe use reset here ? *)
-            let () = Buffer.clear buf_json_in in
-            let () = self#notify in
-            Lwt.return len)
-        in
-        main_loop () in
-
-      lwt () = Sharedbuf.write_lines buf_out
+        lwt str = Lwt_stream.next s in
+        if str <> "" then (* Uncomplete message *)
+          (Buffer.add_string buf_json_in str; main_loop ())
+        else
+          (let buf_str = Buffer.contents buf_json_in in
+          (* let () = Printf.printf "%s\n%!" buf_str in *)
+          let new_books = Parser.parse books buf_str in
+          books <- new_books;
+          Buffer.clear buf_json_in; (* maybe use reset here ? *)
+          self#notify;
+          main_loop ())
+      in
+      List.iter (push_msg p)
         [unsubscribe Ticker |> rpc_of_async_message |> Jsonrpc.to_string;
-         unsubscribe Trade |> rpc_of_async_message |> Jsonrpc.to_string] in
-      lwt (_:int) = self#command_async (Protocol.query_simple "USD" "depth") in
-      main_loop () in
+         unsubscribe Trade |> rpc_of_async_message |> Jsonrpc.to_string];
+      self#command_async (Protocol.query_simple "USD" "depth");
+      main_loop ()
+    in
     try_lwt
       Websocket.with_websocket "http://websocket.mtgox.com/mtgox" update
     with exc ->
@@ -314,12 +309,11 @@ object (self)
       (CK.MAC.hmac_sha512 secret) query_json in
     let signed_request64 = Cohttp.Base64.encode
       (key ^ signed_query ^ query_json) in
-    let res = Jsonrpc.to_string $ rpc_of_async_message
+    Jsonrpc.to_string $ rpc_of_async_message
       ["op", "call";
        "context", "mtgox.com";
        "id", json_id_of_query query;
-       "call", signed_request64] in
-    Sharedbuf.write_line buf_out res
+       "call", signed_request64] |> push_msg push
 
   method command query =
     let encoded_params = Uri.encoded_of_query $
