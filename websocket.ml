@@ -105,8 +105,7 @@ let with_websocket uri_string f =
     let nonce64 = Cohttp.Base64.encode nonce in
     let headers =
       Cohttp.Header.of_list
-        ["Host"                  , myhostname;
-         "Upgrade"               , "websocket";
+        ["Upgrade"               , "websocket";
          "Connection"            , "Upgrade";
          "Sec-WebSocket-Key"     , nonce64;
          "Sec-WebSocket-Version" , "13"] in
@@ -115,8 +114,8 @@ let with_websocket uri_string f =
     lwt sockaddr = Lwt_io.sockaddr_of_dns host (string_of_int port) in
     lwt ic, oc =
       Lwt_io.open_connection ~sock_fun sockaddr in
-    lwt () = CoUnix.Client.write_request req oc in
-    lwt response, _ = Lwt.bind_opt $ CoUnix.Client.read_response ic oc in
+    lwt () = CoUnix.Request.write (fun _ _ -> Lwt.return ()) req oc in
+    lwt response = Lwt.bind_opt $ CoUnix.Response.read ic in
     lwt () = Lwt.wrap2 check_response_is_conform response nonce64 in
     lwt () = Lwt_log.notice_f "(Re)connected to %s\n%!" uri_string in
     Lwt.return (ic, oc)
