@@ -112,8 +112,9 @@ let with_websocket uri_string f =
          "Sec-WebSocket-Version" , "13"] in
     let req = CoUnix.Request.make ~headers uri in
     let sock_fun fd = Lwt_unix.setsockopt fd Lwt_unix.TCP_NODELAY true in
+    lwt sockaddr = Lwt_io.sockaddr_of_dns host (string_of_int port) in
     lwt ic, oc =
-      Lwt_io.open_connection_dns ~sock_fun host (string_of_int port) in
+      Lwt_io.open_connection ~sock_fun sockaddr in
     lwt () = CoUnix.Client.write_request req oc in
     lwt response, _ = Lwt.bind_opt $ CoUnix.Client.read_response ic oc in
     lwt () = Lwt.wrap2 check_response_is_conform response nonce64 in

@@ -18,21 +18,11 @@ module Lwt_io = struct
   include Lwt_io
   open Lwt_unix
 
-  let with_connection_dns
+  let sockaddr_of_dns
       ?(gaiopts = [AI_FAMILY(PF_INET); AI_SOCKTYPE(SOCK_STREAM)])
-      ?sock_fun node service f =
-    lwt addr_infos = getaddrinfo node service gaiopts in
-    lwt addr_info =
-      match addr_infos
-      with h::t -> Lwt.return h | [] -> raise_lwt Not_found in
-    with_connection ?sock_fun addr_info.ai_addr f
-
-  let open_connection_dns
-      ?(gaiopts = [AI_FAMILY(PF_INET); AI_SOCKTYPE(SOCK_STREAM)])
-      ?sock_fun node service =
-    lwt addr_infos = getaddrinfo node service gaiopts in
-    lwt addr_info =
-      match addr_infos
-      with h::t -> Lwt.return h | [] -> raise_lwt Not_found in
-    open_connection ?sock_fun addr_info.ai_addr
+      node service =
+    (match_lwt getaddrinfo node service gaiopts with
+      | h::t -> Lwt.return h
+      | []   -> raise_lwt Not_found)
+    >|= fun ai -> ai.ai_addr
 end
