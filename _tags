@@ -8,6 +8,7 @@
         package(jsonm),\
         package(cohttp.lwt),\
         package(cryptokit),\
+        package(websocket),\
         package(uuidm),\
         package(cmdliner),\
         package(zarith),\

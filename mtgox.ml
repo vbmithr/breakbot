@@ -296,7 +296,8 @@ object (self)
       main_loop ()
     in
     try_lwt
-      Websocket.with_websocket "http://websocket.mtgox.com/mtgox" update
+      Websocket.with_connection
+        (Uri.of_string "http://websocket.mtgox.com/mtgox") update
     with exc ->
       let exc_str = Printexc.to_string exc in
       Lwt_log.error_f "MtGox websocket error: %s" exc_str

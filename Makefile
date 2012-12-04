@@ -13,8 +13,7 @@ cli.[nbdp]*: alldeps
 breakbot.[nbdp]*: alldeps
 
 alldeps: _tags cli.ml breakbot.ml mtgox.ml intersango.ml ecb.ml\
-websocket.ml utils.ml lwt_utils.ml\
-common.ml config.ml
+utils.ml lwt_utils.ml common.ml config.ml
 
 %.native %.byte %.d.byte %.p.native: %.ml
 	$(CC) $(OPTS) $@
