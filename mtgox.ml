@@ -257,12 +257,14 @@ end
 open Protocol
 
 class mtgox key secret btc_addr push_f =
-  let push_msg f m : unit = f (Some m); f (Some "") in
+  let push_msg f content : unit =
+    Websocket.(f (Some { opcode=`Text; final=true; content })) in
 object (self)
   inherit Exchange.exchange "mtgox" push_f
 
-  val mutable stream = Lwt_stream.of_list [""]
-  val mutable push   = fun (_:string option) -> ()
+  val mutable stream = Lwt_stream.of_list
+    [Websocket.({opcode=`Text; final=true; content=""})]
+  val mutable push   = fun (_:Websocket.frame option) -> ()
 
   val key               = key
   val buf_json_in       = Buffer.create 4096
@@ -277,17 +279,28 @@ object (self)
       push   <- p;
 
       let rec main_loop () =
-        lwt str = Lwt_stream.next s in
-        if str <> "" then (* Uncomplete message *)
-          (Buffer.add_string buf_json_in str; main_loop ())
-        else
-          (let buf_str = Buffer.contents buf_json_in in
-          (* let () = Printf.printf "%s\n%!" buf_str in *)
-          let new_books = Parser.parse books buf_str in
-          books <- new_books;
-          Buffer.clear buf_json_in; (* maybe use reset here ? *)
-          self#notify;
-          main_loop ())
+        let open Websocket in
+        match_lwt Lwt_stream.next s with
+          | { opcode=`Text; final=false; content } ->
+            (
+              Buffer.add_string buf_json_in content;
+              main_loop ()
+            )
+
+          | { opcode=`Text; final=true; content } ->
+            (
+              Buffer.add_string buf_json_in content;
+              let buf_str = Buffer.contents buf_json_in in
+              (* let () = Printf.printf "%s\n%!" buf_str in *)
+              let new_books = Parser.parse books buf_str in
+              books <- new_books;
+              Buffer.clear buf_json_in; (* maybe use reset here ? *)
+              self#notify;
+              main_loop ()
+            )
+
+          | _ ->
+            raise_lwt (Failure "Unknown frame type")
       in
       List.iter (push_msg p)
         [unsubscribe Ticker |> rpc_of_async_message |> Jsonrpc.to_string;
