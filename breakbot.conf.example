@@ -1,5 +1,12 @@
 {
     "mtgox": ["your-api-key-here",
-              "your-api-key-secret-here"],
-    "intersango": ["your-api-key-here"]
+              "your-api-key-secret-here",
+              "your-mtgox-btc-address-here"],
+    "intersango": ["your-api-key-here"],
+    "btce": ["your-api-key-here",
+             "your-api-secret-here",
+             "your-btce-btc-address-here"],
+    "bitstamp": ["your-account-number-here",
+                 "your-account-password-here",
+                 "your-bitstamp-btc-address-here"]
 }
