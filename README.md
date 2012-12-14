@@ -27,6 +27,7 @@ so in a foreseeable future.
 
 * lwt
 * cohttp
+* cryptokit-sha512
 * ocaml-rpc
 * bitstring
 * jsonm
