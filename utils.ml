@@ -21,6 +21,20 @@ let (++) f g x = f (g x)
 let (|)        = (lor)
 let (&)        = (land)
 
+module Opt = struct
+  let unbox = function
+    | Some v -> v
+    | None   -> raise Not_found
+
+  let default d = function
+    | Some v -> v
+    | None   -> d
+
+  let map f = function
+    | Some v -> Some (f v)
+    | None   -> None
+end
+
 module Int32 = struct
   include Int32
 
