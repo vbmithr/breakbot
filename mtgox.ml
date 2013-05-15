@@ -274,14 +274,12 @@ end
 open Protocol
 
 class mtgox key secret btc_addr push_f =
-  let push_msg f content : unit =
-    Websocket.(f (Some { opcode=`Text; final=true; content })) in
+  let push_msg f content : unit = Websocket.(f $ Some (Frame.of_string content)) in
 object (self)
   inherit Exchange.exchange "mtgox" push_f
 
-  val mutable stream = Lwt_stream.of_list
-    [Websocket.({opcode=`Text; final=true; content=""})]
-  val mutable push   = fun (_:Websocket.frame option) -> ()
+  val mutable stream = Lwt_stream.of_list [Websocket.(Frame.of_string "")]
+  val mutable push   = fun (_:Websocket.Frame.t option) -> ()
 
   val key               = key
   val buf_json_in       = Buffer.create 4096
@@ -294,31 +292,28 @@ object (self)
     let rec update (s, p) =
       stream <- s;
       push   <- p;
-
       let rec main_loop () =
         let open Websocket in
-        match_lwt Lwt_stream.next s with
-          | { opcode=`Text; final=false; content } ->
-            (
-              Buffer.add_string buf_json_in content;
-              main_loop ()
-            )
-
-          | { opcode=`Text; final=true; content } ->
-            (
-              Buffer.add_string buf_json_in content;
-              let buf_str = Buffer.contents buf_json_in in
-              (* let () = Printf.printf "%s\n%!" buf_str in *)
-              let new_books = Parser.parse books buf_str in
-              books <- new_books;
-              Buffer.clear buf_json_in; (* maybe use reset here ? *)
-              self#notify;
-              main_loop ()
-            )
-
-          | _ ->
-            raise_lwt (Failure "Unknown frame type")
-      in
+            lwt frame = Lwt_stream.next s in
+            let content = Frame.content frame in
+            lwt () = assert_lwt (Frame.opcode frame = `Text) in
+            if Frame.final frame then
+              (
+                Buffer.add_string buf_json_in content;
+                main_loop ()
+              )
+            else
+              (
+                Buffer.add_string buf_json_in content;
+                let buf_str = Buffer.contents buf_json_in in
+                (* let () = Printf.printf "%s\n%!" buf_str in *)
+                let new_books = Parser.parse books buf_str in
+                books <- new_books;
+                Buffer.clear buf_json_in; (* maybe use reset here ? *)
+                self#notify;
+                main_loop ()
+              )
+        in
       List.iter (push_msg p)
         [unsubscribe Ticker |> rpc_of_async_message |> Jsonrpc.to_string;
          unsubscribe Trade |> rpc_of_async_message |> Jsonrpc.to_string];
