@@ -106,10 +106,10 @@ module Set = struct
 end
 
 module IntMap = Map.Make
-  (struct
-    type t = int
-    let compare = Pervasives.compare
-   end)
+    (struct
+      type t = int
+      let compare = Pervasives.compare
+    end)
 module Int64Map = Map.Make(Int64)
 module StringMap = Map.Make(String)
 module StringSet = Set.Make(String)
@@ -153,7 +153,7 @@ module String = struct
     let rec input_forever len pos =
       if len = 0 then buf
       else let read = input ic buf pos len
-           in input_forever (len-read) (pos+read) in
+        in input_forever (len-read) (pos+read) in
     with_finally
       (fun () -> input_forever ic_len 0)
       (fun () -> close_in ic)

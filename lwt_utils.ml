@@ -39,7 +39,7 @@ module Lwt_io = struct
       ?(gaiopts = [AI_FAMILY(PF_INET); AI_SOCKTYPE(SOCK_STREAM)])
       node service =
     (match_lwt getaddrinfo node service gaiopts with
-      | h::t -> Lwt.return h
-      | []   -> raise_lwt Not_found)
+     | h::t -> Lwt.return h
+     | []   -> raise_lwt Not_found)
     >|= fun ai -> ai.ai_addr
 end

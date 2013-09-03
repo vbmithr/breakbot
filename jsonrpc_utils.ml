@@ -26,8 +26,8 @@ module Rpc = struct
   let rec filter_null = function
     | Enum l -> Enum (List.map filter_null l)
     | Dict d -> Dict (
-      List.map (fun (s,v) -> s, filter_null v) $
-        List.filter (fun (s,v) -> v <> Null) d)
+        List.map (fun (s,v) -> s, filter_null v) $
+          List.filter (fun (s,v) -> v <> Null) d)
     | oth -> oth
 
   let rec int_to_float = function

@@ -33,10 +33,10 @@ let get_rates ?(url=url) () =
     let next = try Some (Xmlm.input input) with _ -> None in
     if next = None then acc else
       match Opt.unbox next with
-        | `El_start ((_, "Cube"),
-                     [((_, "currency"), curr); ((_, "rate"), rate)]) ->
-          parse ((curr, float_of_string rate)::acc) input
-        | _ -> parse acc input
+      | `El_start ((_, "Cube"),
+                   [((_, "currency"), curr); ((_, "rate"), rate)]) ->
+        parse ((curr, float_of_string rate)::acc) input
+      | _ -> parse acc input
   in
   Lwt.wrap2 parse [] xml_input
 
@@ -46,7 +46,7 @@ let get_rates_curr ?(url=url) curr =
     let curr_rate = List.assoc curr rates in
     Lwt.return
       (("EUR", 1. /. curr_rate) ::
-          List.map (fun (s,r) -> s, (r /. curr_rate)) rates)
+         List.map (fun (s,r) -> s, (r /. curr_rate)) rates)
 
 let make_convert rates from =
   fun curr ->
@@ -62,9 +62,9 @@ let converters =
   lwt rates = get_rates_curr "USD" in
   let currencies = List.map (fun (c,_) -> c) rates in
   let convert_froms = List.map
-    (fun c -> c, make_convert_Z rates c) currencies in
+      (fun c -> c, make_convert_Z rates c) currencies in
   let converters_funs =
     List.map (fun (c, f) -> List.map
-      (fun curr -> ((c, curr), (f  curr)))
-      currencies) convert_froms |> List.flatten in
+                 (fun curr -> ((c, curr), (f  curr)))
+                 currencies) convert_froms |> List.flatten in
   Lwt.return (fun from to_ -> List.assoc (from, to_) converters_funs)
