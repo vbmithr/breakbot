@@ -150,9 +150,9 @@ object (self)
         "Sign", signed_query_hex
       ] in
     lwt resp, body = Lwt.bind_opt $
-      CoUnix.Client.post ~chunked:false ~headers
-      ?body:(CoUnix.Body.body_of_string query) api_url in
-    CoUnix.Body.string_of_body body
+      CU.Client.post ~chunked:false ~headers
+      ?body:(CB.body_of_string query) api_url in
+    CB.string_of_body body
     >|= Jsonrpc.of_string >>= Protocol.parse_response
 
   method place_order kind curr price amount =

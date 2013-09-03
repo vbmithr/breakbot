@@ -17,7 +17,8 @@
 
 open Utils
 open Lwt_utils
-module CoUnix = Cohttp_lwt_unix
+module CU = Cohttp_lwt_unix
+module CB = Cohttp_lwt_body
 
 module Rpc = struct
   include Rpc
@@ -40,8 +41,8 @@ module Jsonrpc = struct
   include Jsonrpc
 
   let get ?(transform=fun i -> i) url =
-    lwt resp, body = Lwt.bind_opt $ CoUnix.Client.get url in
-    lwt body_str = CoUnix.Body.string_of_body body in
+    lwt resp, body = Lwt.bind_opt $ CU.Client.get url in
+    lwt body_str = CB.string_of_body body in
     let rpc = of_string body_str in Lwt.wrap (fun () -> transform rpc)
 
   let get_filter_null = get ~transform:Rpc.filter_null

@@ -20,7 +20,8 @@ open Lwt_utils
 open Jsonrpc_utils
 open Common
 
-module CoUnix = Cohttp_lwt_unix
+module CU = Cohttp_lwt_unix
+module CB = Cohttp_lwt_body
 
 let period = 2.0
 
@@ -110,12 +111,12 @@ object (self)
       ] in
     let params = ["user", login; "password", passwd] @ params in
     let body = Uri.encoded_of_query $ List.map (fun (k,v) -> k,[v]) params
-      |> CoUnix.Body.body_of_string
+      |> CB.body_of_string
     in
     lwt resp, body = Lwt.bind_opt $
-      CoUnix.Client.post ~chunked:false ~headers
+      CU.Client.post ~chunked:false ~headers
       ?body (make_uri endpoint) in
-      CoUnix.Body.string_of_body body >|= Jsonrpc.of_string
+      CB.string_of_body body >|= Jsonrpc.of_string
 
   method place_order kind curr price amount =
     if curr <> "USD"

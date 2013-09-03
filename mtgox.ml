@@ -360,9 +360,9 @@ object (self)
        with Not_found -> "generic")
       ^ "/" ^ (List.assoc "call" query.fields) in
     lwt resp, body = Lwt.bind_opt $
-      CoUnix.Client.post ~chunked:false ~headers
-      ?body:(CoUnix.Body.body_of_string encoded_params) endpoint in
-    CoUnix.Body.string_of_body body >|= Jsonrpc.of_string
+      CU.Client.post ~chunked:false ~headers
+      ?body:(CB.body_of_string encoded_params) endpoint in
+    CB.string_of_body body >|= Jsonrpc.of_string
 
   method place_order kind curr price amount =
     lwt rpc = self#command $ Protocol.query ~async:false
