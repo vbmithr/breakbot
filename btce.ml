@@ -35,7 +35,7 @@ module Protocol = struct
 
   let make_get_url ?(obj="btc") curr kind =
     let btce_curr = btcecurr_of_curr curr in
-    Uri.of_string $
+    Uri.of_string @@
       "https://btc-e.com/api/2/" ^ obj ^ "_" ^ btce_curr ^ "/" ^ kind
 
   type depth =
@@ -93,7 +93,7 @@ module Protocol = struct
   let query name params =
     let nonce = Unix.gettimeofday_str () in
     let params = ["method", name; "nonce", nonce] @ params in
-    Uri.encoded_of_query $ List.map (fun (k,v) -> k,[v]) params
+    Uri.encoded_of_query @@ List.map (fun (k,v) -> k,[v]) params
 
   let parse_response rpc = let open Rpc in match rpc with
     | Dict ["success", Int 1L; "return", obj] -> Lwt.return obj
@@ -113,7 +113,7 @@ class btce key secret btc_addr push_f =
       let open Protocol in
       lwt () =
         try_lwt
-          lwt rpc = Jsonrpc.get_int_to_float $
+          lwt rpc = Jsonrpc.get_int_to_float @@
                       Protocol.make_get_url "USD" "depth" in
           let depth = depth_of_rpc rpc in
           let ask_book = List.fold_left
@@ -149,7 +149,7 @@ method command query =
         "Key", key;
         "Sign", signed_query_hex
       ] in
-  lwt resp, body = Lwt.bind_opt $
+  lwt resp, body = Lwt.bind_opt @@
                      CU.Client.post ~chunked:false ~headers
                        ?body:(CB.body_of_string query) api_url in
   CB.string_of_body body
@@ -158,7 +158,7 @@ method command query =
 method place_order kind curr price amount =
   let pair = "btc_" ^ Protocol.btcecurr_of_curr curr in
   let kind = match kind with Order.Bid -> "buy" | Order.Ask -> "sell" in
-  self#command $ Protocol.query "Trade"
+  self#command @@ Protocol.query "Trade"
       [
         "pair", pair;
         "type", kind;
@@ -173,7 +173,7 @@ method get_btc_addr = btc_addr
 
 method get_balances =
   let open Protocol in
-  lwt rpc = self#command $ query "getInfo" [] in
+  lwt rpc = self#command @@ query "getInfo" [] in
   let rpc_float = Rpc.int_to_float rpc in
   let getinfo = getinfo_of_rpc rpc_float in
   Lwt.return
@@ -186,7 +186,7 @@ method get_ticker curr =
   lwt rpc = (Lwt.wrap2 Protocol.make_get_url curr "ticker")
     >>= Jsonrpc.get_int_to_float in
   Lwt.wrap (fun () ->
-      Protocol.common_ticker_of_ticker $ Protocol.ticker_of_rpc rpc)
+      Protocol.common_ticker_of_ticker @@ Protocol.ticker_of_rpc rpc)
 
 method get_tickers =
   Lwt_list.map_p

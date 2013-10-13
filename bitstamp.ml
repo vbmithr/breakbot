@@ -26,7 +26,7 @@ module CB = Cohttp_lwt_body
 let period = 2.0
 
 let make_uri endpoint =
-  Uri.of_string $ "https://www.bitstamp.net/api/" ^ endpoint ^ "/"
+  Uri.of_string @@ "https://www.bitstamp.net/api/" ^ endpoint ^ "/"
 
 module Protocol = struct
   type depth =
@@ -81,7 +81,7 @@ class bitstamp login passwd btc_addr push_f=
       let open Protocol in
       lwt () =
         try_lwt
-          lwt rpc = Jsonrpc.get_int_to_float $ make_uri "order_book" in
+          lwt rpc = Jsonrpc.get_int_to_float @@ make_uri "order_book" in
           let depth = depth_of_rpc rpc in
           let ask_book = List.fold_left
               (fun acc d -> let price_float, amount_float = d in
@@ -110,10 +110,10 @@ method command endpoint params =
         "Content-Type", "application/x-www-form-urlencoded";
       ] in
   let params = ["user", login; "password", passwd] @ params in
-  let body = Uri.encoded_of_query $ List.map (fun (k,v) -> k,[v]) params
+  let body = Uri.encoded_of_query @@ List.map (fun (k,v) -> k,[v]) params
              |> CB.body_of_string
   in
-  lwt resp, body = Lwt.bind_opt $
+  lwt resp, body = Lwt.bind_opt @@
                      CU.Client.post ~chunked:false ~headers
                        ?body (make_uri endpoint) in
   CB.string_of_body body >|= Jsonrpc.of_string
@@ -147,7 +147,7 @@ method get_balances =
      "BTC", S.of_face_float balance.btc_available]
 
 method get_ticker _ =
-  Jsonrpc.get_int_to_float $ make_uri "ticker" >|=
+  Jsonrpc.get_int_to_float @@ make_uri "ticker" >|=
   Protocol.ticker_of_rpc >|= Protocol.common_ticker_of_ticker
 
 method get_tickers =

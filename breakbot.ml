@@ -84,6 +84,6 @@ let main () =
       Lwt_list.iter_s (fun x -> arbiter_one xch x) other_xchs in
     arbiter_all updated_xchs >> process ustream
   in
-  Lwt.join $ process ustream :: List.map (fun xch -> xch#update) exchanges
+  Lwt.join @@ process ustream :: List.map (fun xch -> xch#update) exchanges
 
-let () = Lwt_main.run $ main ()
+let () = Lwt_main.run @@ main ()

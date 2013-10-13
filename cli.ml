@@ -85,7 +85,7 @@ let place_order xch kind curr price amount =
     lwt rpc =
       xch#place_order kind curr
         (S.of_face_float price) (S.of_face_float amount)
-    in Lwt_io.printl $ Jsonrpc.to_string rpc
+    in Lwt_io.printl @@ Jsonrpc.to_string rpc
   with
   | Not_found -> Lwt_io.eprintf "Exchange %s unknown\n" xch
   | Failure msg -> Lwt_io.eprintl msg
@@ -102,7 +102,7 @@ let withdraw_btc xch amount address =
         target_xch#get_btc_addr in
     lwt rpc =
       xch#withdraw_btc (S.of_face_float amount) address
-    in Lwt_io.printl $ Jsonrpc.to_string rpc
+    in Lwt_io.printl @@ Jsonrpc.to_string rpc
   with
   | Not_found -> Lwt_io.eprintf "Exchange %s unknown\n" xch
   | Failure msg -> Lwt_io.eprintl msg

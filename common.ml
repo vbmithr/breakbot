@@ -160,8 +160,8 @@ module Book : BOOK = struct
 
   let arbiter bid ask num_iter min_ratio =
     let open S in
-    let max_bid = fst $ max_binding bid
-    and min_ask = fst $ min_binding ask in
+    let max_bid = fst @@ max_binding bid
+    and min_ask = fst @@ min_binding ask in
     if gt max_bid min_ask then
       let askdepthbook = depth_of_ask ask in
       let max_qty = amount_at_price_ask askdepthbook max_bid in
@@ -174,7 +174,7 @@ module Book : BOOK = struct
           let gain = sell_pr - buy_pr in
           if max sell_qty_rem buy_qty_rem <> ~$0 then acc
           else
-            (Lwt.ignore_result $
+            (Lwt.ignore_result @@
                Lwt_log.debug_f "%f, %f, %f, %f\n%!"
                  (S.to_face_float qty)
                  (S.to_float sell_pr /. 1e16)
@@ -188,7 +188,7 @@ module Book : BOOK = struct
         else acc in
       let res, time = Utils.timeit
           (fun () -> perform (~$0, ~$0, ~$0, ~$0) 1) in
-      Lwt.ignore_result $
+      Lwt.ignore_result @@
         Lwt_log.info_f ("Computation time: %0.6f\n") time;
       res
     else

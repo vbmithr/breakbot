@@ -73,8 +73,8 @@ module Protocol = struct
       let fields, params = List.partition
           (fun(k,v) -> k <> "params") fields in
       {
-        fields=params_of_rpc $ Rpc.Dict fields;
-        params=params_of_rpc $ Rpc.Dict params
+        fields=params_of_rpc @@ Rpc.Dict fields;
+        params=params_of_rpc @@ Rpc.Dict params
       }
     | _ -> failwith "query_of_rpc"
 
@@ -264,7 +264,7 @@ module Parser = struct
       try
         Jsonrpc.of_string json_str |> parse_depth books
       with e ->
-        Lwt.ignore_result $
+        Lwt.ignore_result @@
           Lwt_log.warning_f "Failed to parse automatically: %s\n"
             (Printexc.to_string e);
         (* Automatic parsing failed *)
@@ -274,7 +274,7 @@ end
 open Protocol
 
 class mtgox key secret btc_addr push_f =
-  let push_msg f content : unit = Websocket.(f $ Some (Frame.of_string content)) in
+  let push_msg f content : unit = Websocket.(f @@ Some (Frame.of_string content)) in
   object (self)
     inherit Exchange.exchange "mtgox" push_f
 
@@ -330,28 +330,28 @@ finally
 Lwt_unix.sleep 1.0 >>= fun () -> self#update
 
 method command_async query =
-  let query_json = Jsonrpc.to_string $ rpc_of_query query in
+  let query_json = Jsonrpc.to_string @@ rpc_of_query query in
   let signed_query = CK.hash_string
       (CK.MAC.hmac_sha512 secret) query_json in
   let signed_request64 = Cohttp.Base64.encode
       (key ^ signed_query ^ query_json) in
-  Jsonrpc.to_string $ rpc_of_async_message
+  Jsonrpc.to_string @@ rpc_of_async_message
       ["op", "call";
        "context", "mtgox.com";
        "id", json_id_of_query query;
        "call", signed_request64] |> push_msg push
 
 method command query =
-  let encoded_params = Uri.encoded_of_query $
+  let encoded_params = Uri.encoded_of_query @@
                          List.map (fun (k,v) -> k, [v]) query.params in
   let headers = Cohttp.Header.of_list
       ["User-Agent", "Breakbot";
        "Content-Type", "application/x-www-form-urlencoded";
-       "Rest-Key", Uuidm.to_string $ Opt.unbox (Uuidm.of_bytes key);
-       "Rest-Sign", Cohttp.Base64.encode $
+       "Rest-Key", Uuidm.to_string @@ Opt.unbox (Uuidm.of_bytes key);
+       "Rest-Sign", Cohttp.Base64.encode @@
                       CK.hash_string (CK.MAC.hmac_sha512 secret) encoded_params
       ] in
-  let endpoint = Uri.of_string $
+  let endpoint = Uri.of_string @@
                    "https://mtgox.com/api/1/" ^
                      (try
                         let item = List.assoc "item" query.fields
@@ -359,24 +359,24 @@ method command query =
                         item ^ currency
                       with Not_found -> "generic")
                    ^ "/" ^ (List.assoc "call" query.fields) in
-  lwt resp, body = Lwt.bind_opt $
+  lwt resp, body = Lwt.bind_opt @@
                      CU.Client.post ~chunked:false ~headers
                        ?body:(CB.body_of_string encoded_params) endpoint in
   CB.string_of_body body >|= Jsonrpc.of_string
 
 method place_order kind curr price amount =
-  lwt rpc = self#command $ Protocol.query ~async:false
+  lwt rpc = self#command @@ Protocol.query ~async:false
                 ~optfields:["item","BTC"; "currency", curr]
                 ~params:(["type", Order.string_of_kind kind;
                           "amount_int", S.to_string amount]
                          @ S.(if price > ~$0 then
-                                ["price_int", to_string $ price / ~$1000] else []))
+                                ["price_int", to_string @@ price / ~$1000] else []))
                 "private/order/add" in
   let rpc_null_filtered = Rpc.filter_null rpc in
   parse_response rpc_null_filtered
 
 method withdraw_btc amount address =
-  lwt rpc = self#command $ Protocol.query ~async:false
+  lwt rpc = self#command @@ Protocol.query ~async:false
                 ~params:["address", address; "amount_int", S.to_string amount]
                 "bitcoin/send_simple" in
   let rpc_null_filtered = Rpc.filter_null rpc in
@@ -385,13 +385,13 @@ method withdraw_btc amount address =
 method get_btc_addr = btc_addr
 
 method get_balances =
-  lwt rpc = self#command $ Protocol.query ~async:false "private/info" in
+  lwt rpc = self#command @@ Protocol.query ~async:false "private/info" in
   let rpc_null_filtered = Rpc.filter_null rpc in
   parse_response rpc_null_filtered
   >|= private_info_of_rpc >|= pairs_of_private_info
 
 method get_ticker curr =
-  lwt rpc = self#command $ Protocol.query_simple curr "ticker" in
+  lwt rpc = self#command @@ Protocol.query_simple curr "ticker" in
   let rpc_null_filtered = Rpc.filter_null rpc in
   parse_response rpc_null_filtered >|= ticker_of_rpc
 

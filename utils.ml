@@ -15,8 +15,11 @@
  *
  *)
 
-external (|>) : 'a -> ('a -> 'b) -> 'b = "%revapply"
-external ($)  : ('a -> 'b) -> 'a -> 'b = "%apply"
+#if ocaml_version < (4, 1)
+let (@@) f x = f x
+let (|>) x f = f x
+#endif
+
 let (++) f g x = f (g x)
 let (|)        = (lor)
 let (&)        = (land)
@@ -129,12 +132,12 @@ let timeit f =
 module Unix = struct
   include Unix
 
-  let gettimeofday_int () = int_of_float $ gettimeofday ()
-  let gettimeofday_str () = Printf.sprintf "%.0f" $ gettimeofday ()
+  let gettimeofday_int () = int_of_float @@ gettimeofday ()
+  let gettimeofday_str () = Printf.sprintf "%.0f" @@ gettimeofday ()
 
   let getmicrotime () = gettimeofday () *. 1e6
-  let getmicrotime_int64 () = Int64.of_float $ gettimeofday () *. 1e6
-  let getmicrotime_str () = Printf.sprintf "%.0f" $ gettimeofday () *. 1e6
+  let getmicrotime_int64 () = Int64.of_float @@ gettimeofday () *. 1e6
+  let getmicrotime_str () = Printf.sprintf "%.0f" @@ gettimeofday () *. 1e6
 end
 
 module String = struct
