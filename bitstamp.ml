@@ -83,13 +83,19 @@ class bitstamp login passwd btc_addr push_f =
             let open Bitstamp_j in
             let order_book = order_book_of_string body in
             let ask_book = List.fold_left
-                (fun acc [p;a] ->
-                   let price, amount = (S.of_face_string p), (S.of_face_string a) in
-                   Book.add price amount acc) Book.empty order_book.asks
+                (fun acc order -> match order with
+                   | [p;a] ->
+                     let price, amount = (S.of_face_string p), (S.of_face_string a) in
+                     Book.add price amount acc
+                   | _ -> raise (Invalid_argument "Corrupted bitstamp json or API changed.")
+                ) Book.empty order_book.asks
             and bid_book = List.fold_left
-                (fun acc [p;a] ->
-                  let price, amount = (S.of_face_string p), (S.of_face_string a) in
-                  Book.add price amount acc) Book.empty order_book.bids in
+                (fun acc order -> match order with
+                   | [p;a] ->
+                     let price, amount = (S.of_face_string p), (S.of_face_string a) in
+                     Book.add price amount acc
+                   | _ -> raise (Invalid_argument "Corrupted bitstamp json or API changed.")
+                ) Book.empty order_book.bids in
             let () = books <- StringMap.add "USD" (bid_book, ask_book) books in
             Lwt.wrap (fun () -> self#notify)
         with exn ->

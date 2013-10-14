@@ -38,11 +38,6 @@ module Protocol = struct
     Uri.of_string @@
       "https://btc-e.com/api/2/" ^ obj ^ "_" ^ btce_curr ^ "/" ^ kind
 
-  type depth =
-    { asks: (float * float) list;
-      bids: (float * float) list
-    } with rpc
-
   type ticker_ =
     {
       high: float;
@@ -113,26 +108,29 @@ class btce key secret btc_addr push_f =
       let open Protocol in
       lwt () =
         try_lwt
-          lwt rpc = Jsonrpc.get_int_to_float @@
-                      Protocol.make_get_url "USD" "depth" in
-          let depth = depth_of_rpc rpc in
-          let ask_book = List.fold_left
-              (fun acc d -> let price_float, amount_float = d in
-                let price, amount =
-                  (S.of_face_float price_float),
-                  (S.of_face_float amount_float) in
-                Book.add price amount acc) Book.empty depth.asks
-          and bid_book = List.fold_left
-              (fun acc d -> let price_float, amount_float = d in
-                let price, amount =
-                  (S.of_face_float price_float),
-                  (S.of_face_float amount_float) in
-                Book.add price amount acc) Book.empty depth.bids in
-          let () = books <- StringMap.add "USD" (bid_book, ask_book) books in
-          Lwt.wrap (fun () -> self#notify)
-        with exc ->
-          let exc_str = Printexc.to_string exc in
-          Lwt_log.error_f "Btce update error: %s" exc_str
+          CU.Client.get (Protocol.make_get_url "USD" "depth") >>= function
+          | None -> Lwt.fail (Failure "CU.Client.get returned None")
+          | Some (response, body) ->
+            CB.string_of_body body >>= fun body ->
+            let open Btce_j in
+            let order_book = order_book_of_string body in
+            let ask_book = List.fold_left
+                (fun acc order -> match order with
+                   | [p;a] ->
+                     let price, amount = (S.of_face_float p), (S.of_face_float a) in
+                     Book.add price amount acc
+                   | _ -> raise (Invalid_argument "Corrupted btce json or API changed.")
+                ) Book.empty order_book.asks
+            and bid_book = List.fold_left
+                (fun acc order -> match order with
+                   | [p;a] ->
+                     let price, amount = (S.of_face_float p), (S.of_face_float a) in
+                     Book.add price amount acc
+                   | _ -> raise (Invalid_argument "Corrupted btce json or API changed.")
+                ) Book.empty order_book.bids in
+            let () = books <- StringMap.add "USD" (bid_book, ask_book) books in
+            Lwt.wrap (fun () -> self#notify)
+        with exn -> Lwt_log.error ~exn "Btce update error"
 finally Lwt_unix.sleep period
 in self#update
 
