@@ -1,5 +1,6 @@
-<**/*.{ml,native,byte}>: syntax(camlp4o),\
+<**/*.{ml,mli,native,byte}>: syntax(camlp4o),\
         package(optcomp),\
+        package(atdgen),\
         package(lwt.syntax),\
         package(lwt.syntax.log),\
         package(rpclib.syntax),\

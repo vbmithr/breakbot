@@ -29,11 +29,6 @@ let make_uri endpoint =
   Uri.of_string @@ "https://www.bitstamp.net/api/" ^ endpoint ^ "/"
 
 module Protocol = struct
-  type depth =
-    { bids: (float * float) list;
-      asks: (float * float) list
-    } with rpc
-
   type ticker =
     {
       high: float;
@@ -69,7 +64,7 @@ module Protocol = struct
     | oth -> oth
 end
 
-class bitstamp login passwd btc_addr push_f=
+class bitstamp login passwd btc_addr push_f =
   object (self)
     inherit Exchange.exchange "bitstamp" push_f
 
@@ -81,25 +76,24 @@ class bitstamp login passwd btc_addr push_f=
       let open Protocol in
       lwt () =
         try_lwt
-          lwt rpc = Jsonrpc.get_int_to_float @@ make_uri "order_book" in
-          let depth = depth_of_rpc rpc in
-          let ask_book = List.fold_left
-              (fun acc d -> let price_float, amount_float = d in
-                let price, amount =
-                  (S.of_face_float price_float),
-                  (S.of_face_float amount_float) in
-                Book.add price amount acc) Book.empty depth.asks
-          and bid_book = List.fold_left
-              (fun acc d -> let price_float, amount_float = d in
-                let price, amount =
-                  (S.of_face_float price_float),
-                  (S.of_face_float amount_float) in
-                Book.add price amount acc) Book.empty depth.bids in
-          let () = books <- StringMap.add "USD" (bid_book, ask_book) books in
-          Lwt.wrap (fun () -> self#notify)
-        with exc ->
-          let exc_str = Printexc.to_string exc in
-          Lwt_log.error_f "Bitstamp update error: %s" exc_str
+          CU.Client.get (make_uri "order_book") >>= function
+          | None -> Lwt.fail (Failure "CU.Client.get returned None")
+          | Some (response, body) ->
+            CB.string_of_body body >>= fun body ->
+            let open Bitstamp_j in
+            let order_book = order_book_of_string body in
+            let ask_book = List.fold_left
+                (fun acc [p;a] ->
+                   let price, amount = (S.of_face_string p), (S.of_face_string a) in
+                   Book.add price amount acc) Book.empty order_book.asks
+            and bid_book = List.fold_left
+                (fun acc [p;a] ->
+                  let price, amount = (S.of_face_string p), (S.of_face_string a) in
+                  Book.add price amount acc) Book.empty order_book.bids in
+            let () = books <- StringMap.add "USD" (bid_book, ask_book) books in
+            Lwt.wrap (fun () -> self#notify)
+        with exn ->
+          Lwt_log.error_f ~exn "Bitstamp update error"
 finally Lwt_unix.sleep period
 in self#update
 
