@@ -323,11 +323,10 @@ class mtgox key secret btc_addr push_f =
       try_lwt
         Websocket.with_connection
           (Uri.of_string "http://websocket.mtgox.com/mtgox") update
-      with exc ->
-        let exc_str = Printexc.to_string exc in
-        Lwt_log.error_f "MtGox websocket error: %s" exc_str
-finally
-Lwt_unix.sleep 1.0 >>= fun () -> self#update
+      with exn ->
+        Lwt_log.error ~exn "MtGox websocket error"
+      finally
+        Lwt_unix.sleep 1.0 >>= fun () -> self#update
 
 method command_async query =
   let query_json = Jsonrpc.to_string @@ rpc_of_query query in
