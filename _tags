@@ -1,3 +1,7 @@
+true: debug, bin_annot
+<lib>: include
+<src>: include
+
 <**/*.{ml,mli,native,byte}>: syntax(camlp4o),\
         package(optcomp),\
         package(atdgen),\
@@ -13,4 +17,4 @@
         package(cmdliner),\
         package(zarith),\
         package(bitstamp),\
-        thread, annot
+        thread

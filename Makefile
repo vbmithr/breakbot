@@ -1,6 +1,6 @@
 CC=ocamlbuild
 OPTS=-use-ocamlfind
-TARGETS=breakbot.ml cli.ml
+TARGETS=src/breakbot.ml src/cli.ml
 
 .PHONY: all native byte debug profiling cli.* breakbot.* clean
 
