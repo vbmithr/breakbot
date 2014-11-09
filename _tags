@@ -12,4 +12,5 @@
         package(uuidm),\
         package(cmdliner),\
         package(zarith),\
+        package(bitstamp),\
         thread, annot

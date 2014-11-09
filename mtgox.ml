@@ -364,7 +364,8 @@ method command query =
   CB.string_of_body body >|= Jsonrpc.of_string
 
 method place_order kind curr price amount =
-  lwt rpc = self#command @@ Protocol.query ~async:false
+  lwt rpc = self#command @@ Protocol.query
+                ~async:false
                 ~optfields:["item","BTC"; "currency", curr]
                 ~params:(["type", Order.string_of_kind kind;
                           "amount_int", S.to_string amount]

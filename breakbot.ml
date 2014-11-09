@@ -41,10 +41,10 @@ let main () =
       Uuidm.to_bytes (Opt.unbox (Uuidm.of_string key)),
       Cohttp.Base64.decode secret, addr
     | _ -> failwith "Syntax error in config file."
-  and btce_key, btce_secret, btce_addr =
-    match (List.assoc "btce" config) with
-    | [key; secret; addr] -> key, secret, addr
-    | _ -> failwith "Syntax error in config file."
+  (* and btce_key, btce_secret, btce_addr = *)
+  (*   match (List.assoc "btce" config) with *)
+  (*   | [key; secret; addr] -> key, secret, addr *)
+  (*   | _ -> failwith "Syntax error in config file." *)
   and bs_login, bs_passwd, bs_addr =
     match (List.assoc "bitstamp" config) with
     | [login; passwd; addr] -> login, passwd, addr
@@ -54,9 +54,9 @@ let main () =
   let exchanges_assq =
     ["mtgox", (new Mtgox.mtgox mtgox_key mtgox_secret mtgox_addr push_f
                :> Exchange.exchange);
-     "btce", (new Btce.btce btce_key btce_secret btce_addr push_f
-              :> Exchange.exchange);
-     "bitstamp", (new Bitstamp.bitstamp bs_login bs_passwd bs_addr push_f
+     (* "btce", (new Btce.btce btce_key btce_secret btce_addr push_f *)
+     (*          :> Exchange.exchange); *)
+     "bitstamp", (new Bitstamp_plugin.bitstamp bs_login bs_passwd bs_addr push_f
                   :> Exchange.exchange)
     ] in
   let exchanges = List.map snd exchanges_assq in

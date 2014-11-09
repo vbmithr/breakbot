@@ -252,6 +252,8 @@ end
 
 module Books = MakeBooks(Book)
 
+type 'a ok_or_error = [`Ok of 'a | `Error of string]
+
 module Exchange = struct
   type balances = (string * S.t) list
 
@@ -270,11 +272,10 @@ module Exchange = struct
       method virtual base_curr : string
 
       method virtual update    : unit Lwt.t
-      method virtual place_order : Order.kind -> string -> S.t -> S.t ->
-        Rpc.t Lwt.t
-      method virtual withdraw_btc : S.t -> string -> Rpc.t Lwt.t
+      method virtual place_order : Order.kind -> string -> S.t -> S.t -> (unit ok_or_error) Lwt.t
+      method virtual withdraw_btc : S.t -> string -> (unit ok_or_error) Lwt.t
       method virtual get_btc_addr : string
-      method virtual get_balances : balances Lwt.t
-      method virtual get_tickers  : (string * Ticker.t) list Lwt.t
+      method virtual get_balances : (balances ok_or_error) Lwt.t
+      method virtual get_tickers  : (string * Ticker.t ok_or_error) list Lwt.t
     end
 end

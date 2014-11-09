@@ -38,7 +38,7 @@ and bstamp_l, bstamp_p, bstamp_addr =
 let exchanges = [
   (new Mtgox.mtgox mtgox_key mtgox_secret mtgox_addr ignore :> Exchange.exchange);
   (new Btce.btce btce_key btce_secret btce_addr ignore :> Exchange.exchange);
-  (new Bitstamp.bitstamp bstamp_l bstamp_p bstamp_addr ignore :> Exchange.exchange)
+  (new Bitstamp_plugin.bitstamp bstamp_key bstamp_secret bstamp_addr ignore :> Exchange.exchange)
 ]
 
 let print_balances ?curr xchs =
