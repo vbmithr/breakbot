@@ -59,7 +59,7 @@ template strings by actual values. The file follows the JSON syntax.
 
 ## Going further
 
-This is not a final product, I abandonned development when I realized
+This is not a final product, I abandoned development when I realized
 that this project cannot be profitable for now. It was a cool project
 to develop, but as it misses its purpose, there is no much point doing
 anything more for it for now. Maybe the CLI could be useful for people
